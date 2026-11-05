@@ -9,6 +9,7 @@ HTML + JavaScript puro, sin frameworks ni build. Base de datos en Supabase.
 - ✅ Histórico importado: 1.409 órdenes, 915 clientes, 2.129 ítems, 1.382 abonos
 - ✅ Usuario administrador activo
 - ✅ Catálogo de servicios normalizado y costos por reparación (`sql/08_servicios.sql`)
+- ✅ Módulos de accesorios (FIFO) y equipos (cuotas/créditos) — requiere `sql/10` a `sql/14`
 - ✅ Publicado en GitHub Pages: <https://sirtechrepair.github.io/Sirtech-pos/>
 
 > Las secciones 1 y 2 quedan como documentación para reinstalar desde cero.
@@ -50,8 +51,17 @@ Después de lo anterior, ejecuta en orden:
 | 7 | `sql/06_import_pagos_estados.sql` | 1.382 abonos y estados finales |
 | 8 | `sql/08_servicios.sql` | Catálogo de servicios, normalización y costos por reparación |
 | 9 | `sql/09_quitar_recibido.sql` | Elimina el estado "recibido" del flujo |
+| 10 | `sql/10_accesorios.sql` | Accesorios, lotes FIFO, ventas, pagos y garantías |
+| 11 | `sql/11_equipos.sql` | Equipos, inventario, ventas, cuotas y pagos |
+| 12 | `sql/12_seed_productos.sql` | Catálogo inicial de 180 accesorios |
+| 13 | `sql/13_import_accesorios.sql` | Histórico de ventas de accesorios |
+| 14 | `sql/14_import_equipos.sql` | Histórico de ventas e inventario de equipos |
 
 Cada archivo abre y cierra su propia transacción: si algo falla, no deja datos a medias.
+
+> Los archivos `13` y `14` contienen nombres y contactos de compradores.
+> **No se suben a GitHub** (están en `.gitignore`). Se regeneran con:
+> `python3 import/importar_ventas.py`
 
 > El paso 8 es el que deja el POS con el catálogo de servicios y la nueva
 > estructura de costos. Es idempotente: si lo vuelves a ejecutar, no duplica nada.
@@ -162,6 +172,8 @@ js/
   clientes.js      listado, ficha e historial
   dinero.js        caja y movimientos
   reportes.js      resultados del mes, top equipos y fallas
+  accesorios.js    inventario FIFO, ventas, abonos y garantías
+  equipos.js       inventario, ventas, cuotas y créditos
 sql/               esquema, seguridad, importación y catálogo de servicios
 import/            script que genera los SQL desde los Excel
 ```
@@ -180,9 +192,25 @@ insert into public.servicios (nombre) values ('NOMBRE DEL SERVICIO');
 
 ---
 
-## 6. Pendiente (siguiente fase)
+## 6. Módulos de venta
 
-- **Accesorios**: catálogo con stock, costo promedio y venta rápida (el catálogo ya existe en el Excel de accesorios).
-- **Equipos**: inventario por IMEI, venta con inicial y cuotas, consignación.
-- Fotos y firma al recibir el equipo (hoy es solo texto, por decisión de operación).
-- Impresión de recibos (hoy se comparte por WhatsApp).
+### Accesorios
+- Catálogo de 180 productos con precio de venta y costo de referencia.
+- **Ingresos por lote**: producto, cantidad, costo unitario, proveedor y fecha.
+- **FIFO**: cada venta consume primero los lotes más antiguos.
+- Venta rápida, abonos con fecha/método y saldo.
+- **Garantías**: producto defectuoso de una venta o de tienda, reemplazo por
+  otro producto del catálogo y descuento automático del inventario.
+
+### Equipos
+- Inventario por IMEI (disponible, en reparación, consignación, vendido).
+- Ventas con inicial, número de cuotas y valor de cuota.
+- Generación automática de cuotas y registro de pagos con fecha y método.
+- Pestañas **Sneider**, **Sociedad** y **Todos** con la misma lógica.
+- El saldo y el estado de pago se calculan solos.
+
+### Pendiente (siguiente fase)
+
+- Fotos y firma al recibir el equipo.
+- Impresión de recibos.
+- Reportes consolidados de accesorios/equipos dentro de la página de Reportes.

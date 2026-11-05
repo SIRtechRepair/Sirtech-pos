@@ -9,3 +9,7 @@ sql/03_import_clientes.sql
 sql/04_import_ordenes.sql
 sql/05_import_items.sql
 sql/06_import_pagos_estados.sql
+
+# Importación de ventas históricas: contienen datos de compradores.
+sql/13_import_accesorios.sql
+sql/14_import_equipos.sql

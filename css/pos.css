@@ -330,6 +330,8 @@ main { max-width: 1180px; margin: 0 auto; padding: 18px 16px 70px; }
 .fila-inline select { width: 150px; }
 .mixto-pago { margin-top: 10px; }
 .acciones-item { display: inline-flex; gap: 4px; align-items: center; }
+.fila-acc { display: grid; grid-template-columns: minmax(200px, 1fr) 70px 110px 100px 34px; gap: 8px; align-items: center; margin-bottom: 8px; }
+.fila-acc input { height: 38px; }
 .acciones-final { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 
 /* ---------- listas ---------- */

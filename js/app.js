@@ -5,6 +5,8 @@
 const TABS = [
   { k: "inicio",    n: "Inicio",       i: "ti-home" },
   { k: "ordenes",   n: "Reparaciones", i: "ti-tools" },
+  { k: "accesorios", n: "Accesorios",  i: "ti-box" },
+  { k: "equipos",   n: "Equipos",      i: "ti-device-mobile" },
   { k: "clientes",  n: "Clientes",     i: "ti-users" },
   { k: "dinero",    n: "Dinero",       i: "ti-wallet" },
   { k: "reportes",  n: "Reportes",     i: "ti-chart-bar" }
@@ -15,6 +17,8 @@ const RUTAS = {
   ordenes: vistaOrdenes,
   nueva: vistaNueva,
   orden: vistaOrden,
+  accesorios: vistaAccesorios,
+  equipos: vistaEquipos,
   clientes: vistaClientes,
   cliente: vistaCliente,
   dinero: vistaDinero,
