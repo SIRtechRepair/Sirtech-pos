@@ -8,6 +8,7 @@ HTML + JavaScript puro, sin frameworks ni build. Base de datos en Supabase.
 - ✅ Esquema y seguridad aplicados en Supabase
 - ✅ Histórico importado: 1.409 órdenes, 915 clientes, 2.129 ítems, 1.382 abonos
 - ✅ Usuario administrador activo
+- ✅ Catálogo de servicios normalizado y costos por reparación (`sql/08_servicios.sql`)
 - ✅ Publicado en GitHub Pages: <https://sirtechrepair.github.io/Sirtech-pos/>
 
 > Las secciones 1 y 2 quedan como documentación para reinstalar desde cero.
@@ -47,8 +48,12 @@ Después de lo anterior, ejecuta en orden:
 | 5 | `sql/04_import_ordenes.sql` | 1.409 órdenes |
 | 6 | `sql/05_import_items.sql` | 2.129 ítems (servicios y repuestos) |
 | 7 | `sql/06_import_pagos_estados.sql` | 1.382 abonos y estados finales |
+| 8 | `sql/08_servicios.sql` | Catálogo de servicios, normalización y costos por reparación |
 
 Cada archivo abre y cierra su propia transacción: si algo falla, no deja datos a medias.
+
+> El paso 8 es el que deja el POS con el catálogo de servicios y la nueva
+> estructura de costos. Es idempotente: si lo vuelves a ejecutar, no duplica nada.
 
 **Totales que debes ver al final:**
 
@@ -120,16 +125,21 @@ https://TU-USUARIO.github.io/Sirtech-pos/
 
 ## 4. Cómo funciona el dinero
 
-Regla clave, tomada de tus Excel:
+Cada orden puede tener **varias reparaciones** (servicios) en el mismo equipo.
+Cada reparación guarda su propio precio cobrado, costo del servicio, domicilio y
+costo de repuestos. El catálogo de servicios solo guarda nombres: **no tiene precios**.
 
 ```
-total de la orden   = suma de ítems (precio × cantidad) − descuento
-costo de repuestos  = suma de ítems tipo "repuesto" (costo × cantidad)
-margen              = total − costo_repuestos − envío − gastos
-saldo               = total − suma de abonos
+total              = suma de precios cobrados − descuento
+envíos             = suma de domicilios de cada reparación + envío adicional
+repuestos          = suma de costos de repuestos de cada reparación
+costos de servicio = suma de costos de cada reparación
+ganancia           = total − costos de servicio − envíos − repuestos − gastos
+debe               = total − suma de abonos
 ```
 
-- **El envío y los gastos son costos del negocio**, no se suman al total (igual que en tu hoja).
+- **El envío, los repuestos y los gastos son costos del negocio**, no se suman al total.
+- El **debe nunca se escribe a mano**: lo calcula la base de datos cada vez que agregas una reparación o un abono.
 - El **saldo nunca se escribe a mano**: lo calcula la base de datos cada vez que agregas un ítem o un abono.
 - Una orden **no se puede marcar como entregada si tiene saldo**. La base de datos lo bloquea.
 - Al entregar se fija la fecha y se calcula el vencimiento de la garantía.
@@ -150,8 +160,20 @@ js/
   clientes.js      listado, ficha e historial
   dinero.js        caja y movimientos
   reportes.js      resultados del mes, top equipos y fallas
-sql/               esquema, seguridad e importación
+sql/               esquema, seguridad, importación y catálogo de servicios
 import/            script que genera los SQL desde los Excel
+```
+
+### Catálogo de servicios
+
+- Vive en la tabla `servicios` (solo `nombre`, `activo`; **sin precios**).
+- Las reparaciones de cada orden se siguen guardando en `orden_items`, igual que antes.
+- El desplegable del POS solo permite elegir servicios del catálogo, para evitar
+  que vuelvan los nombres duplicados.
+- Para agregar un servicio nuevo, ejecuta en Supabase:
+
+```sql
+insert into public.servicios (nombre) values ('NOMBRE DEL SERVICIO');
 ```
 
 ---

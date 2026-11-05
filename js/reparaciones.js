@@ -115,7 +115,11 @@ function htmlLista(ordenes) {
 }
 
 /* ======================= NUEVA ORDEN ======================= */
-function vistaNueva() {
+async function vistaNueva() {
+  var catalogo = [];
+  try { catalogo = await serviciosCatalogo(); }
+  catch (e) { toast("No se pudo cargar el catálogo de servicios. Ejecuta sql/08_servicios.sql.", "error"); }
+
   $("#vista").innerHTML =
     '<div class="pagina-head">' +
       '<button class="btn-ghost" data-hash="#/ordenes"><i class="ti ti-arrow-left"></i></button>' +
@@ -147,23 +151,35 @@ function vistaNueva() {
         "</section>" +
       "</div>" +
 
-      '<section class="box">' +
-        '<div class="box-head"><h3><i class="ti ti-tools"></i> Servicios y repuestos</h3>' +
-          '<button type="button" class="btn-ghost" id="btn-add-item"><i class="ti ti-plus"></i> Agregar</button></div>' +
-        '<div id="items"></div>' +
-        '<div class="totales">' +
-          '<div><span>Total a cobrar</span><b id="t-total">$0</b></div>' +
-          '<div><span>Costo de repuestos</span><b id="t-costo">$0</b></div>' +
-          '<div><span>Margen estimado</span><b id="t-margen">$0</b></div>' +
+      '<section class="box box-servicios">' +
+        '<div class="box-head"><h3><i class="ti ti-tools"></i> Servicios de reparación</h3>' +
+          '<button type="button" class="btn-ghost" id="btn-add-item"><i class="ti ti-plus"></i> Agregar servicio</button></div>' +
+        '<div class="servicios-grid">' +
+          '<div class="servicios-lista">' +
+            '<div id="items"></div>' +
+            '<p class="mini-vacio" id="items-vacio">Agrega el primer servicio de la reparación.</p>' +
+          "</div>" +
+          '<aside class="box resumen resumen-serv">' +
+            '<div class="res-linea grande"><span>Total</span><b id="t-total">$0</b></div>' +
+            '<div class="res-linea mini"><span>Envíos</span><b id="t-envio">$0</b></div>' +
+            '<div class="res-linea mini"><span>Repuestos</span><b id="t-repuestos">$0</b></div>' +
+            '<div class="res-linea mini"><span>Costos de servicios</span><b id="t-costo-serv">$0</b></div>' +
+            '<div class="res-linea mini"><span>Gastos</span><b id="t-gastos">$0</b></div>' +
+            '<div class="res-linea mini"><span>Descuento</span><b id="t-descuento">$0</b></div>' +
+            '<div class="sep"></div>' +
+            '<div class="res-linea"><span>Ganancia</span><b id="t-ganancia">$0</b></div>' +
+            '<div class="sep"></div>' +
+            '<div class="res-linea mini"><span>Abono inicial</span><b id="t-abono">$0</b></div>' +
+            '<div class="res-linea"><span>Debe</span><b id="t-debe">$0</b></div>' +
+          "</aside>" +
         "</div>" +
       "</section>" +
 
       '<div class="grid-2">' +
         '<section class="box">' +
           "<h3><i class=\"ti ti-cash\"></i> Cobro</h3>" +
-          '<div class="grid-2-in">' +
-            '<div><label class="lb">Envío (costo)</label><input id="o-envio" type="number" inputmode="numeric" value="0"></div>' +
-            '<div><label class="lb">Otros gastos</label><input id="o-gastos" type="number" inputmode="numeric" value="0"></div>' +
+          '<div class="grid-3-in">' +
+            '<div><label class="lb">Gastos generales</label><input id="o-gastos" type="number" inputmode="numeric" value="0"></div>' +
             '<div><label class="lb">Descuento</label><input id="o-descuento" type="number" inputmode="numeric" value="0"></div>' +
             '<div><label class="lb">Garantía (días)</label><input id="o-garantia" type="number" inputmode="numeric" value="30"></div>' +
           "</div>" +
@@ -193,9 +209,10 @@ function vistaNueva() {
       "</div>" +
     "</form>";
 
+  montarDatalist(catalogo);
   montarBuscadorCliente($("#o-nombre"), $("#o-cliente-id"), $("#o-telefono"));
   agregarFilaItem();
-  $$("#o-envio, #o-gastos, #o-descuento").forEach(function (el) { el.addEventListener("input", recalcularForm); });
+  $$("#o-gastos, #o-descuento, #o-abono").forEach(function (el) { el.addEventListener("input", recalcularForm); });
   $("#btn-add-item").addEventListener("click", function () { agregarFilaItem(); });
   $("#items").addEventListener("click", function (e) {
     var b = e.target.closest("[data-quitar]");
@@ -215,12 +232,12 @@ function agregarFilaItem(datos) {
   var div = document.createElement("div");
   div.className = "fila-item";
   div.innerHTML =
-    '<select class="it-tipo"><option value="servicio"' + (d.tipo === "repuesto" ? "" : " selected") + ">Servicio</option>" +
-      '<option value="repuesto"' + (d.tipo === "repuesto" ? " selected" : "") + ">Repuesto</option></select>" +
-    '<input class="it-desc" placeholder="Descripción (Ej. Cambio de pantalla)" value="' + esc(d.descripcion || "") + '">' +
+    '<input class="it-serv" list="lista-servicios" placeholder="Servicio (buscar…)" value="' + esc(d.descripcion || "") + '" required>' +
     '<input class="it-cant" type="number" min="0.5" step="0.5" value="' + (d.cantidad || 1) + '" title="Cantidad">' +
-    '<input class="it-costo" type="number" inputmode="numeric" placeholder="Costo" value="' + (d.costo_unitario || "") + '">' +
-    '<input class="it-precio" type="number" inputmode="numeric" placeholder="Precio" value="' + (d.precio_unitario || "") + '">' +
+    '<input class="it-precio" type="number" inputmode="numeric" placeholder="Precio" value="' + (d.precio_unitario || "") + '" title="Precio cobrado">' +
+    '<input class="it-costo" type="number" inputmode="numeric" placeholder="Costo" value="' + (d.costo_unitario || "") + '" title="Costo del servicio">' +
+    '<input class="it-envio" type="number" inputmode="numeric" placeholder="Domicilio" value="' + (d.envio || "") + '" title="Domicilio / envío">' +
+    '<input class="it-repuestos" type="number" inputmode="numeric" placeholder="Repuestos" value="' + (d.costo_repuestos || "") + '" title="Costo de repuestos">' +
     '<span class="it-sub mono">$0</span>' +
     '<button type="button" class="x" data-quitar title="Quitar"><i class="ti ti-x"></i></button>';
   $("#items").appendChild(div);
@@ -230,23 +247,34 @@ function agregarFilaItem(datos) {
 function leerItems() {
   return $$("#items .fila-item").map(function (f) {
     return {
-      tipo: $(".it-tipo", f).value,
-      descripcion: $(".it-desc", f).value,
+      descripcion: $(".it-serv", f).value.trim(),
       cantidad: num($(".it-cant", f).value) || 1,
+      precio_unitario: num($(".it-precio", f).value),
       costo_unitario: num($(".it-costo", f).value),
-      precio_unitario: num($(".it-precio", f).value)
+      envio: num($(".it-envio", f).value),
+      costo_repuestos: num($(".it-repuestos", f).value)
     };
-  }).filter(function (i) { return i.descripcion.trim(); });
+  }).filter(function (i) { return i.descripcion; });
+}
+
+function montarDatalist(lista) {
+  var dl = $("#lista-servicios");
+  if (!dl) return;
+  dl.innerHTML = (lista || []).map(function (s) {
+    return '<option value="' + esc(s.nombre) + '"></option>';
+  }).join("");
 }
 
 function recalcularForm() {
   if (!$("#items")) return;
   var items = leerItems();
   var total = items.reduce(function (s, i) { return s + i.precio_unitario * i.cantidad; }, 0);
-  var costo = items.reduce(function (s, i) { return s + i.costo_unitario * i.cantidad; }, 0);
+  var envio = items.reduce(function (s, i) { return s + i.envio; }, 0);
+  var repuestos = items.reduce(function (s, i) { return s + i.costo_repuestos; }, 0);
+  var costoSer = items.reduce(function (s, i) { return s + i.costo_unitario * i.cantidad; }, 0);
   var desc = num($("#o-descuento") ? $("#o-descuento").value : 0);
-  var envio = num($("#o-envio") ? $("#o-envio").value : 0);
   var gastos = num($("#o-gastos") ? $("#o-gastos").value : 0);
+  var abono = num($("#o-abono") ? $("#o-abono").value : 0);
 
   $$("#items .fila-item").forEach(function (f) {
     var c = num($(".it-cant", f).value) || 1;
@@ -254,10 +282,21 @@ function recalcularForm() {
     $(".it-sub", f).textContent = cop(c * p);
   });
 
+  var ganancia = total - desc - costoSer - envio - repuestos - gastos;
+  var debe = total - desc - abono;
+
   $("#t-total").textContent = cop(total - desc);
-  $("#t-costo").textContent = cop(costo);
-  $("#t-margen").textContent = cop(total - desc - costo - envio - gastos);
-  $("#t-margen").className = (total - desc - costo - envio - gastos) < 0 ? "rojo" : "verde";
+  $("#t-envio").textContent = cop(envio);
+  $("#t-repuestos").textContent = cop(repuestos);
+  $("#t-costo-serv").textContent = cop(costoSer);
+  $("#t-gastos").textContent = cop(gastos);
+  $("#t-descuento").textContent = cop(desc);
+  $("#t-ganancia").textContent = cop(ganancia);
+  $("#t-ganancia").className = ganancia < 0 ? "rojo" : "verde";
+  $("#t-abono").textContent = cop(abono);
+  $("#t-debe").textContent = cop(debe);
+  $("#t-debe").className = debe > 0.5 ? "rojo" : "verde";
+  if ($("#items-vacio")) $("#items-vacio").classList.toggle("oculto", items.length > 0);
 }
 
 async function guardarNuevaOrden(e) {
@@ -266,7 +305,15 @@ async function guardarNuevaOrden(e) {
   btn.disabled = true;
   try {
     var items = leerItems();
-    if (!items.length) throw new Error("Agrega al menos un servicio o repuesto.");
+    if (!items.length) throw new Error("Agrega al menos un servicio.");
+
+    var catalogo = await serviciosCatalogo();
+    items.forEach(function (i) {
+      var s = servicioPorNombre(i.descripcion, catalogo);
+      if (!s) throw new Error('Servicio no válido: "' + i.descripcion + '". Elígelo del listado.');
+      i.servicio_id = s.id;
+      i.descripcion = s.nombre;
+    });
 
     var cab = {
       cliente_id: Number($("#o-cliente-id").value) || null,
@@ -279,7 +326,6 @@ async function guardarNuevaOrden(e) {
       falla: $("#o-falla").value,
       tecnico: $("#o-tecnico").value,
       prioridad: $("#o-prioridad").value,
-      envio: $("#o-envio").value,
       gastos: $("#o-gastos").value,
       descuento: $("#o-descuento").value,
       garantia_dias: $("#o-garantia").value,
@@ -314,8 +360,13 @@ async function vistaOrden(params) {
   var o = d.orden;
   var c = o.clientes || {};
   var e = estadoInfo(o.estado);
-  var margen = Number(o.total) - Number(o.costo_repuestos) - Number(o.envio) - Number(o.gastos);
+  var margen = (o.ganancia !== undefined && o.ganancia !== null)
+    ? Number(o.ganancia)
+    : Number(o.total) - Number(o.costo_servicios || 0) - Number(o.costo_repuestos) - Number(o.envio) - Number(o.gastos);
   var esFinal = ESTADOS_FINALES.indexOf(o.estado) > -1;
+
+  var catalogo = [];
+  try { catalogo = await serviciosCatalogo(); } catch (err) { /* el detalle sigue funcionando */ }
 
   v.innerHTML =
     '<div class="pagina-head">' +
@@ -351,19 +402,21 @@ async function vistaOrden(params) {
         "</section>" +
 
         '<section class="box">' +
-          '<div class="box-head"><h3><i class="ti ti-tools"></i> Servicios y repuestos</h3>' +
-            (esFinal ? "" : '<button class="btn-ghost btn-sm" id="btn-add-item"><i class="ti ti-plus"></i> Agregar</button>') + "</div>" +
-          (d.items.length ? '<div class="tabla-wrap"><table class="tabla"><thead><tr><th>Tipo</th><th>Descripción</th><th class="der">Cant.</th><th class="der">Costo</th><th class="der">Precio</th><th class="der">Subtotal</th><th></th></tr></thead><tbody>' +
+          '<div class="box-head"><h3><i class="ti ti-tools"></i> Servicios de reparación</h3>' +
+            (esFinal ? "" : '<button class="btn-ghost btn-sm" id="btn-add-item"><i class="ti ti-plus"></i> Agregar servicio</button>') + "</div>" +
+          (d.items.length ? '<div class="tabla-wrap"><table class="tabla"><thead><tr><th>Servicio</th><th class="der">Cant.</th><th class="der">Precio</th><th class="der">Costo</th><th class="der">Domicilio</th><th class="der">Repuestos</th><th class="der">Subtotal</th><th></th></tr></thead><tbody>' +
             d.items.map(function (i) {
-              return "<tr><td>" + (i.tipo === "repuesto" ? '<span class="tag">Repuesto</span>' : '<span class="tag tag-serv">Servicio</span>') + "</td>" +
-                "<td>" + esc(i.descripcion) + "</td>" +
+              var rep = i.tipo === "repuesto";
+              return "<tr><td>" + esc(i.descripcion) + (rep ? ' <span class="tag">Repuesto histórico</span>' : "") + "</td>" +
                 '<td class="der mono">' + i.cantidad + "</td>" +
-                '<td class="der mono">' + cop(i.costo_unitario) + "</td>" +
                 '<td class="der mono">' + cop(i.precio_unitario) + "</td>" +
+                '<td class="der mono">' + (rep ? "—" : cop(i.costo_unitario)) + "</td>" +
+                '<td class="der mono">' + (rep ? "—" : cop(i.envio)) + "</td>" +
+                '<td class="der mono">' + cop(rep ? i.costo_unitario : i.costo_repuestos) + "</td>" +
                 '<td class="der mono">' + cop(Number(i.precio_unitario) * Number(i.cantidad)) + "</td>" +
                 '<td class="der">' + (esFinal ? "" : '<button class="x" data-borrar-item="' + i.id + '"><i class="ti ti-trash"></i></button>') + "</td></tr>";
             }).join("") + "</tbody></table></div>"
-            : vacio("Sin ítems registrados.", "ti-list-details")) +
+            : vacio("Sin servicios registrados.", "ti-list-details")) +
         "</section>" +
 
         '<section class="box">' +
@@ -393,15 +446,16 @@ async function vistaOrden(params) {
       '<aside class="col-side">' +
         '<section class="box resumen">' +
           '<div class="res-linea grande"><span>Total</span><b>' + cop(o.total) + "</b></div>" +
-          '<div class="res-linea"><span>Pagado</span><b class="verde">' + cop(o.pagado) + "</b></div>" +
-          '<div class="res-linea"><span>Saldo</span><b class="' + (Number(o.saldo) > 0.5 ? "rojo" : "verde") + '">' + cop(o.saldo) + "</b></div>" +
-          '<div class="sep"></div>' +
-          '<div class="res-linea mini"><span>Costo repuestos</span><b>' + cop(o.costo_repuestos) + "</b></div>" +
-          '<div class="res-linea mini"><span>Envío</span><b>' + cop(o.envio) + "</b></div>" +
-          '<div class="res-linea mini"><span>Otros gastos</span><b>' + cop(o.gastos) + "</b></div>" +
+          '<div class="res-linea mini"><span>Envíos</span><b>' + cop(o.envio) + "</b></div>" +
+          '<div class="res-linea mini"><span>Repuestos</span><b>' + cop(o.costo_repuestos) + "</b></div>" +
+          '<div class="res-linea mini"><span>Costos de servicios</span><b>' + cop(o.costo_servicios) + "</b></div>" +
+          '<div class="res-linea mini"><span>Gastos</span><b>' + cop(o.gastos) + "</b></div>" +
           '<div class="res-linea mini"><span>Descuento</span><b>' + cop(o.descuento) + "</b></div>" +
           '<div class="sep"></div>' +
-          '<div class="res-linea"><span>Margen</span><b class="' + (margen < 0 ? "rojo" : "verde") + '">' + cop(margen) + "</b></div>" +
+          '<div class="res-linea"><span>Ganancia</span><b class="' + (margen < 0 ? "rojo" : "verde") + '">' + cop(margen) + "</b></div>" +
+          '<div class="sep"></div>' +
+          '<div class="res-linea"><span>Abonos</span><b class="verde">' + cop(o.pagado) + "</b></div>" +
+          '<div class="res-linea"><span>Debe</span><b class="' + (Number(o.saldo) > 0.5 ? "rojo" : "verde") + '">' + cop(o.saldo) + "</b></div>" +
         "</section>" +
 
         '<section class="box">' +
@@ -465,6 +519,8 @@ function conectarDetalle(o, d) {
     });
   });
 
+  montarDatalist(catalogo);
+
   var btnEntregar = $("#btn-entregar");
   if (btnEntregar) btnEntregar.addEventListener("click", async function () {
     if (!confirm("¿Entregar la orden #" + String(o.numero).padStart(4, "0") + "?\nEsto inicia la garantía.")) return;
@@ -509,16 +565,16 @@ function conectarDetalle(o, d) {
 /* ======================= MODALES ======================= */
 function modalItem(o) {
   abrirModal(
-    "<h3>Agregar ítem</h3>" +
+    "<h3>Agregar servicio</h3>" +
     '<form id="form-item" class="form-modal">' +
-      '<label class="lb">Tipo</label>' +
-      '<select id="it-tipo"><option value="servicio">Servicio</option><option value="repuesto">Repuesto</option></select>' +
-      '<label class="lb">Descripción</label>' +
-      '<input id="it-desc" placeholder="Cambio de pantalla" required>' +
-      '<div class="grid-3-in">' +
+      '<label class="lb">Servicio</label>' +
+      '<input id="it-serv" list="lista-servicios" placeholder="Buscar servicio…" required>' +
+      '<div class="grid-2-in">' +
         '<div><label class="lb">Cantidad</label><input id="it-cant" type="number" min="0.5" step="0.5" value="1"></div>' +
-        '<div><label class="lb">Costo</label><input id="it-costo" type="number" inputmode="numeric" value="0"></div>' +
-        '<div><label class="lb">Precio</label><input id="it-precio" type="number" inputmode="numeric" value="0"></div>' +
+        '<div><label class="lb">Precio cobrado</label><input id="it-precio" type="number" inputmode="numeric" value="0"></div>' +
+        '<div><label class="lb">Costo del servicio</label><input id="it-costo" type="number" inputmode="numeric" value="0"></div>' +
+        '<div><label class="lb">Domicilio / envío</label><input id="it-envio" type="number" inputmode="numeric" value="0"></div>' +
+        '<div><label class="lb">Costo de repuestos</label><input id="it-repuestos" type="number" inputmode="numeric" value="0"></div>' +
       "</div>" +
       '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
         '<button class="btn"><i class="ti ti-plus"></i> Agregar</button></div>' +
@@ -527,19 +583,23 @@ function modalItem(o) {
   $("#form-item").addEventListener("submit", async function (e) {
     e.preventDefault();
     try {
+      var s = servicioPorNombre($("#it-serv").value, await serviciosCatalogo());
+      if (!s) throw new Error("Selecciona un servicio del listado.");
       await agregarItem(o.id, {
-        tipo: $("#it-tipo").value,
-        descripcion: $("#it-desc").value,
+        servicio_id: s.id,
+        descripcion: s.nombre,
         cantidad: $("#it-cant").value,
+        precio_unitario: $("#it-precio").value,
         costo_unitario: $("#it-costo").value,
-        precio_unitario: $("#it-precio").value
+        envio: $("#it-envio").value,
+        costo_repuestos: $("#it-repuestos").value
       });
       cerrarModal();
-      toast("Ítem agregado");
+      toast("Servicio agregado");
       recargar();
     } catch (err) { toast(errorDe(err), "error"); }
   });
-  setTimeout(function () { $("#it-desc").focus(); }, 50);
+  setTimeout(function () { $("#it-serv").focus(); }, 50);
 }
 
 function modalPago(o, sugerido) {
@@ -583,7 +643,7 @@ function modalEditar(o) {
         '<div><label class="lb">Modelo</label><input id="ed-modelo" value="' + esc(o.modelo || "") + '"></div>' +
         '<div><label class="lb">IMEI / serial</label><input id="ed-imei" value="' + esc(o.imei || "") + '"></div>' +
         '<div><label class="lb">Técnico</label><input id="ed-tecnico" value="' + esc(o.tecnico || "") + '"></div>' +
-        '<div><label class="lb">Envío (costo)</label><input id="ed-envio" type="number" value="' + Number(o.envio) + '"></div>' +
+        '<div><label class="lb">Envío adicional</label><input id="ed-envio" type="number" value="' + Number(o.envio_extra || 0) + '"></div>' +
         '<div><label class="lb">Otros gastos</label><input id="ed-gastos" type="number" value="' + Number(o.gastos) + '"></div>' +
         '<div><label class="lb">Descuento</label><input id="ed-descuento" type="number" value="' + Number(o.descuento) + '"></div>' +
         '<div><label class="lb">Garantía (días)</label><input id="ed-garantia" type="number" value="' + Number(o.garantia_dias) + '"></div>' +
@@ -606,7 +666,7 @@ function modalEditar(o) {
         modelo: $("#ed-modelo").value,
         imei: $("#ed-imei").value,
         tecnico: $("#ed-tecnico").value,
-        envio: $("#ed-envio").value,
+        envio_extra: $("#ed-envio").value,
         gastos: $("#ed-gastos").value,
         descuento: $("#ed-descuento").value,
         garantia_dias: $("#ed-garantia").value,

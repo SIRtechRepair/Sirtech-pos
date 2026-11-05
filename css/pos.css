@@ -310,8 +310,13 @@ main { max-width: 1180px; margin: 0 auto; padding: 18px 16px 70px; }
 .sugerencias button small { color: var(--muted); }
 .sug-vacio { padding: 10px 12px; color: var(--muted); font-size: 13px; }
 
-.fila-item { display: grid; grid-template-columns: 110px minmax(130px, 1fr) 70px 100px 100px 90px 34px; gap: 8px; align-items: center; margin-bottom: 8px; }
+.servicios-grid { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 16px; align-items: start; }
+.servicios-lista { min-width: 0; }
+.box-servicios .box-head { margin-bottom: 12px; }
+.resumen-serv { padding: 14px; position: sticky; top: 118px; }
+.fila-item { display: grid; grid-template-columns: minmax(170px, 1fr) 62px 96px 96px 96px 96px 92px 34px; gap: 8px; align-items: center; margin-bottom: 8px; }
 .fila-item input, .fila-item select { height: 38px; }
+.fila-item .it-serv { min-width: 0; }
 .it-sub { text-align: right; font-size: 13px; color: var(--g); }
 .totales { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 .totales div { display: flex; flex-direction: column; }
@@ -374,6 +379,8 @@ main { max-width: 1180px; margin: 0 auto; padding: 18px 16px 70px; }
 @media (max-width: 980px) {
   .detalle-grid { grid-template-columns: 1fr; }
   .col-side { position: static; }
+  .servicios-grid { grid-template-columns: 1fr; }
+  .resumen-serv { position: static; }
 }
 @media (max-width: 760px) {
   .grid-2 { grid-template-columns: 1fr; }
@@ -382,7 +389,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 18px 16px 70px; }
   main { padding: 14px 12px 80px; }
   .tabs { top: 61px; }
   .fila-item { grid-template-columns: 1fr 1fr; }
-  .fila-item .it-desc { grid-column: 1 / -1; }
+  .fila-item .it-serv { grid-column: 1 / -1; }
   .fila-item .it-sub { text-align: left; }
   .fila-item .x { justify-self: end; }
   .kpis { grid-template-columns: 1fr 1fr; }
@@ -392,5 +399,5 @@ main { max-width: 1180px; margin: 0 auto; padding: 18px 16px 70px; }
 @media (max-width: 460px) {
   .kpis { grid-template-columns: 1fr; }
   .fila-item { grid-template-columns: 1fr; }
-  .fila-item .it-desc { grid-column: auto; }
+  .fila-item .it-serv { grid-column: auto; }
 }

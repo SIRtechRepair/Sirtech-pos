@@ -35,6 +35,32 @@ async function salir() {
   await sb.auth.signOut();
 }
 
+/* ---------------- CATÁLOGO DE SERVICIOS ---------------- */
+let _serviciosCache = null;
+
+async function listarServicios() {
+  return db(sb.from("servicios").select("id,nombre")
+    .eq("activo", true).order("nombre"));
+}
+
+async function serviciosCatalogo(forzar) {
+  if (!_serviciosCache || forzar) _serviciosCache = await listarServicios();
+  return _serviciosCache;
+}
+
+function normalizarTexto(s) {
+  return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function servicioPorNombre(nombre, lista) {
+  const n = normalizarTexto(nombre);
+  if (!n) return null;
+  return (lista || _serviciosCache || []).find(function (s) {
+    return normalizarTexto(s.nombre) === n;
+  }) || null;
+}
+
 /* ---------------- CLIENTES ---------------- */
 async function buscarClientes(texto, limite) {
   const t = (texto || "").trim().replace(/[,()]/g, " ");
@@ -98,7 +124,8 @@ async function actualizarCliente(id, datos) {
 /* ---------------- ÓRDENES ---------------- */
 const CAMPOS_ORDEN =
   "id,numero,cliente_id,equipo,marca,modelo,imei,color,falla,diagnostico,tecnico,estado," +
-  "prioridad,envio,gastos,descuento,total,costo_repuestos,pagado,saldo,garantia_dias," +
+  "prioridad,envio,envio_extra,gastos,descuento,total,costo_servicios,costo_repuestos," +
+  "ganancia,pagado,saldo,garantia_dias," +
   "garantia_hasta,fecha_recibido,fecha_prometida,fecha_entregado,notas,historico,creado_en," +
   "clientes(nombre,telefono)";
 
@@ -161,7 +188,7 @@ async function crearOrden(cab, items, pago) {
     tecnico: (cab.tecnico || "").trim() || null,
     estado: cab.estado || "recibido",
     prioridad: cab.prioridad || "normal",
-    envio: num(cab.envio),
+    envio: 0,
     gastos: num(cab.gastos),
     descuento: num(cab.descuento),
     garantia_dias: Math.max(0, Math.round(num(cab.garantia_dias))),
@@ -176,11 +203,14 @@ async function crearOrden(cab, items, pago) {
     .map(function (i) {
       return {
         orden_id: orden.id,
-        tipo: i.tipo === "repuesto" ? "repuesto" : "servicio",
+        tipo: "servicio",
+        servicio_id: i.servicio_id || null,
         descripcion: i.descripcion.trim(),
         cantidad: num(i.cantidad) || 1,
         costo_unitario: num(i.costo_unitario),
-        precio_unitario: num(i.precio_unitario)
+        precio_unitario: num(i.precio_unitario),
+        envio: num(i.envio),
+        costo_repuestos: num(i.costo_repuestos)
       };
     });
   if (filas.length) await db(sb.from("orden_items").insert(filas));
@@ -200,8 +230,8 @@ async function crearOrden(cab, items, pago) {
 
 async function actualizarOrden(id, campos) {
   const permitidos = ["equipo", "marca", "modelo", "imei", "color", "falla", "diagnostico",
-    "tecnico", "estado", "prioridad", "envio", "gastos", "descuento", "garantia_dias",
-    "fecha_prometida", "notas", "cliente_id"];
+    "tecnico", "estado", "prioridad", "envio", "envio_extra", "gastos", "descuento",
+    "garantia_dias", "fecha_prometida", "notas", "cliente_id"];
   const fila = {};
   permitidos.forEach(function (k) {
     if (k in campos) fila[k] = campos[k];
@@ -217,11 +247,14 @@ async function cambiarEstado(id, estado) {
 async function agregarItem(ordenId, item) {
   return db(sb.from("orden_items").insert({
     orden_id: ordenId,
-    tipo: item.tipo === "repuesto" ? "repuesto" : "servicio",
+    tipo: "servicio",
+    servicio_id: item.servicio_id || null,
     descripcion: item.descripcion.trim(),
     cantidad: num(item.cantidad) || 1,
     costo_unitario: num(item.costo_unitario),
-    precio_unitario: num(item.precio_unitario)
+    precio_unitario: num(item.precio_unitario),
+    envio: num(item.envio),
+    costo_repuestos: num(item.costo_repuestos)
   }).select().single());
 }
 
@@ -272,11 +305,11 @@ async function eliminarMovimiento(id) {
 
 /* ---------------- CONSULTAS DE REPORTES ---------------- */
 async function ordenesEntre(desde, hasta) {
-  return db(sb.from("ordenes").select("id,numero,estado,total,costo_repuestos,envio,gastos,descuento,saldo,pagado,fecha_recibido,fecha_entregado,equipo,falla,tecnico,historico").gte("fecha_recibido", desde + "T00:00:00").lte("fecha_recibido", hasta + "T23:59:59").limit(3000));
+  return db(sb.from("ordenes").select("id,numero,estado,total,costo_servicios,costo_repuestos,envio,gastos,descuento,ganancia,saldo,pagado,fecha_recibido,fecha_entregado,equipo,falla,tecnico,historico").gte("fecha_recibido", desde + "T00:00:00").lte("fecha_recibido", hasta + "T23:59:59").limit(3000));
 }
 
 async function ordenesEntregadasEntre(desde, hasta) {
-  return db(sb.from("ordenes").select("id,numero,total,costo_repuestos,envio,gastos,descuento,garantia_dias,fecha_entregado,equipo,tecnico").eq("estado", "entregado").gte("fecha_entregado", desde + "T00:00:00").lte("fecha_entregado", hasta + "T23:59:59").limit(3000));
+  return db(sb.from("ordenes").select("id,numero,total,costo_servicios,costo_repuestos,envio,gastos,descuento,ganancia,garantia_dias,fecha_entregado,equipo,tecnico").eq("estado", "entregado").gte("fecha_entregado", desde + "T00:00:00").lte("fecha_entregado", hasta + "T23:59:59").limit(3000));
 }
 
 async function pagosEntre(desde, hasta) {
