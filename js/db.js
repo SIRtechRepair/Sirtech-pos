@@ -12,6 +12,23 @@ async function db(promise) {
   return res.data;
 }
 
+/* Trae todas las filas paginando, para que los reportes "todo el tiempo"
+   no se corten en el máximo de filas por petición (1.000 en Supabase). */
+async function dbAll(build, pageSize) {
+  const size = pageSize || 1000;
+  let desde = 0;
+  let out = [];
+  while (true) {
+    const rows = await db(build().range(desde, desde + size - 1));
+    if (!rows || !rows.length) break;
+    out = out.concat(rows);
+    if (rows.length < size) break;
+    desde += size;
+    if (desde > 100000) break;
+  }
+  return out;
+}
+
 /* ---------------- SESIÓN ---------------- */
 async function sesionActual() {
   const { data } = await sb.auth.getSession();
@@ -326,19 +343,44 @@ async function eliminarMovimiento(id) {
 
 /* ---------------- CONSULTAS DE REPORTES ---------------- */
 async function ordenesEntre(desde, hasta) {
-  return db(sb.from("ordenes").select("id,numero,estado,total,costo_servicios,costo_repuestos,envio,gastos,descuento,ganancia,saldo,pagado,fecha_recibido,fecha_entregado,equipo,falla,tecnico,historico").gte("fecha_recibido", desde + "T00:00:00").lte("fecha_recibido", hasta + "T23:59:59").limit(3000));
+  return dbAll(function () {
+    return sb.from("ordenes")
+      .select("id,numero,estado,total,costo_servicios,costo_repuestos,envio,gastos,descuento,ganancia,saldo,pagado,fecha_recibido,fecha_entregado,equipo,falla,tecnico,historico")
+      .gte("fecha_recibido", desde + "T00:00:00")
+      .lte("fecha_recibido", hasta + "T23:59:59")
+      .order("id");
+  });
 }
 
 async function ordenesEntregadasEntre(desde, hasta) {
-  return db(sb.from("ordenes").select("id,numero,total,costo_servicios,costo_repuestos,envio,gastos,descuento,ganancia,garantia_dias,fecha_entregado,equipo,tecnico").eq("estado", "entregado").gte("fecha_entregado", desde + "T00:00:00").lte("fecha_entregado", hasta + "T23:59:59").limit(3000));
+  return dbAll(function () {
+    return sb.from("ordenes")
+      .select("id,numero,total,costo_servicios,costo_repuestos,envio,gastos,descuento,ganancia,garantia_dias,fecha_entregado,equipo,tecnico")
+      .eq("estado", "entregado")
+      .gte("fecha_entregado", desde + "T00:00:00")
+      .lte("fecha_entregado", hasta + "T23:59:59")
+      .order("id");
+  });
 }
 
 async function pagosEntre(desde, hasta) {
-  return db(sb.from("pagos").select("id,orden_id,monto,metodo,fecha").gte("fecha", desde + "T00:00:00").lte("fecha", hasta + "T23:59:59"));
+  return dbAll(function () {
+    return sb.from("pagos")
+      .select("id,orden_id,monto,metodo,fecha")
+      .gte("fecha", desde + "T00:00:00")
+      .lte("fecha", hasta + "T23:59:59")
+      .order("id");
+  });
 }
 
 async function movimientosEntre(desde, hasta) {
-  return db(sb.from("movimientos_dinero").select("id,tipo,cuenta,monto,creado_en").gte("creado_en", desde + "T00:00:00").lte("creado_en", hasta + "T23:59:59"));
+  return dbAll(function () {
+    return sb.from("movimientos_dinero")
+      .select("id,tipo,cuenta,monto,creado_en")
+      .gte("creado_en", desde + "T00:00:00")
+      .lte("creado_en", hasta + "T23:59:59")
+      .order("id");
+  });
 }
 
 /* ---------------- PANEL ---------------- */

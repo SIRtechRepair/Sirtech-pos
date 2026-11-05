@@ -168,6 +168,9 @@ main { max-width: 1180px; margin: 0 auto; padding: 18px 16px 70px; }
   display: inline-flex; align-items: center; gap: 6px;
 }
 .seg button.on { background: var(--card2); color: #fff; box-shadow: 0 1px 0 #333 inset; }
+.reportes-filtros { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.rango-fechas { display: flex; align-items: center; gap: 8px; }
+.rango-meses { display: inline-flex; align-items: center; gap: 6px; }
 
 /* ---------- cajas ---------- */
 .box {
@@ -396,6 +399,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 18px 16px 70px; }
   .kpis { grid-template-columns: 1fr 1fr; }
   .pagina-head h2 { font-size: 19px; }
   .acciones-head { width: 100%; justify-content: flex-end; }
+  .reportes-filtros { width: 100%; justify-content: flex-start; }
 }
 @media (max-width: 460px) {
   .kpis { grid-template-columns: 1fr; }

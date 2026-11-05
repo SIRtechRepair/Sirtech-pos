@@ -3,6 +3,8 @@
    ============================================================ */
 
 var mesReporte = inputDate(new Date()).slice(0, 7);
+var modoReporte = "mes";
+var rangoReporte = { desde: mesReporte, hasta: mesReporte };
 
 function rangoMes(mes) {
   var partes = mes.split("-");
@@ -14,19 +16,78 @@ function rangoMes(mes) {
   };
 }
 
+function rangoReporteActual() {
+  if (modoReporte === "todo") {
+    return { desde: "1900-01-01", hasta: hoyInput() };
+  }
+  if (modoReporte === "rango") {
+    var a = rangoReporte.desde || mesReporte;
+    var b = rangoReporte.hasta || mesReporte;
+    if (a > b) { var t = a; a = b; b = t; }
+    return { desde: rangoMes(a).desde, hasta: rangoMes(b).hasta };
+  }
+  return rangoMes(mesReporte);
+}
+
+function refrescarFiltrosReporte() {
+  if (!$("#r-modo")) return;
+  $$("#r-modo [data-rmodo]").forEach(function (b) {
+    b.classList.toggle("on", b.dataset.rmodo === modoReporte);
+  });
+  if ($("#r-fechas")) $("#r-fechas").classList.toggle("oculto", modoReporte === "todo");
+  if ($("#r-mes")) $("#r-mes").classList.toggle("oculto", modoReporte !== "mes");
+  if ($("#r-rango")) $("#r-rango").classList.toggle("oculto", modoReporte !== "rango");
+}
+
 async function vistaReportes() {
   $("#vista").innerHTML =
     '<div class="pagina-head">' +
       '<div><h2>Reportes</h2><p class="sub">Resultados del negocio</p></div>' +
-      '<input type="month" id="r-mes" value="' + mesReporte + '">' +
+      '<div class="reportes-filtros">' +
+        '<div class="seg" id="r-modo">' +
+          '<button data-rmodo="mes"><i class="ti ti-calendar"></i> Mes</button>' +
+          '<button data-rmodo="rango"><i class="ti ti-calendar-stats"></i> Rango</button>' +
+          '<button data-rmodo="todo"><i class="ti ti-infinity"></i> Todo</button>' +
+        "</div>" +
+        '<div id="r-fechas" class="rango-fechas">' +
+          '<input type="month" id="r-mes" value="' + mesReporte + '">' +
+          '<span id="r-rango" class="rango-meses oculto">' +
+            '<input type="month" id="r-desde" value="' + rangoReporte.desde + '" title="Desde">' +
+            '<span class="mini">a</span>' +
+            '<input type="month" id="r-hasta" value="' + rangoReporte.hasta + '" title="Hasta">' +
+          "</span>" +
+        "</div>" +
+      "</div>" +
     "</div>" +
     '<div id="zona-reportes">' + cargando() + "</div>";
 
-  $("#r-mes").addEventListener("change", function () {
-    mesReporte = this.value;
+  $("#r-modo").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-rmodo]");
+    if (!b) return;
+    modoReporte = b.dataset.rmodo;
+    refrescarFiltrosReporte();
     pintarReportes();
   });
 
+  $("#r-mes").addEventListener("change", function () {
+    if (!this.value) { this.value = mesReporte; return; }
+    mesReporte = this.value;
+    if (modoReporte === "mes") pintarReportes();
+  });
+
+  $("#r-desde").addEventListener("change", function () {
+    if (!this.value) { this.value = rangoReporte.desde; return; }
+    rangoReporte.desde = this.value;
+    if (modoReporte === "rango") pintarReportes();
+  });
+
+  $("#r-hasta").addEventListener("change", function () {
+    if (!this.value) { this.value = rangoReporte.hasta; return; }
+    rangoReporte.hasta = this.value;
+    if (modoReporte === "rango") pintarReportes();
+  });
+
+  refrescarFiltrosReporte();
   pintarReportes();
 }
 
@@ -35,7 +96,12 @@ async function pintarReportes() {
   if (!zona) return;
   zona.innerHTML = cargando();
   try {
-    var r = rangoMes(mesReporte);
+    var r = rangoReporteActual();
+    var donde = modoReporte === "mes" ? "el mes" : (modoReporte === "todo" ? "todo el tiempo" : "el rango");
+    var titulo = modoReporte === "mes" ? "Resultado del mes" : "Resultado del período";
+    var periodoTexto = modoReporte === "todo"
+      ? "Todo el tiempo"
+      : "Período: " + fdate(r.desde) + " a " + fdate(r.hasta);
     var res = await Promise.all([
       ordenesEntregadasEntre(r.desde, r.hasta),
       ordenesEntre(r.desde, r.hasta),
@@ -89,7 +155,7 @@ async function pintarReportes() {
 
       '<div class="grid-2">' +
         '<section class="box">' +
-          "<h3>Resultado del mes</h3>" +
+          "<h3>" + titulo + "</h3>" +
           '<div class="datos">' +
             filaDato("Facturado", cop(facturado)) +
             filaDato("− Repuesto", cop(costoRep)) +
@@ -108,7 +174,7 @@ async function pintarReportes() {
                 if (!porMetodo[m.k]) return "";
                 return filaDato(m.n, cop(porMetodo[m.k]));
               }).join("") + "</div>"
-            : vacio("Sin cobros en el mes.", "ti-receipt")) +
+            : vacio("Sin cobros en " + donde + ".", "ti-receipt")) +
           '<div class="sep"></div>' +
           '<div class="res-linea"><span>Cartera total</span><b class="' + (cartera > 0 ? "rojo" : "verde") + '">' + cop(cartera) + "</b></div>" +
         "</section>" +
@@ -140,8 +206,9 @@ async function pintarReportes() {
         "</section>" +
       "</div>" +
 
-      '<p class="mini-nota">Órdenes recibidas en el mes: ' + recibidas.length +
-        " · Entregadas en el mes: " + entregadas.length + "</p>";
+      '<p class="mini-nota">' + periodoTexto +
+        " · Órdenes recibidas: " + recibidas.length +
+        " · Entregadas: " + entregadas.length + "</p>";
   } catch (e) {
     zona.innerHTML = vacio(errorDe(e), "ti-alert-triangle");
   }
