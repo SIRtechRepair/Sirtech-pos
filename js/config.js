@@ -35,6 +35,15 @@ const METODOS = [
   { k: "otro",        n: "Otro",        c: "#6b7280" }
 ];
 
+/* Métodos disponibles al registrar un pago. "Mixto" se divide en varios
+   registros, uno por cada medio, para que la caja y los reportes cuadren. */
+const METODOS_PAGO = [
+  { k: "efectivo",      n: "Efectivo" },
+  { k: "transferencia", n: "Transferencia" },
+  { k: "tarjeta",       n: "Tarjeta" },
+  { k: "mixto",         n: "Mixto" }
+];
+
 const TIPOS_MOV = [
   { k: "gasto",     n: "Gasto del negocio" },
   { k: "proveedor", n: "Pago a proveedor" },

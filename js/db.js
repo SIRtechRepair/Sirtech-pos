@@ -215,15 +215,23 @@ async function crearOrden(cab, items, pago) {
     });
   if (filas.length) await db(sb.from("orden_items").insert(filas));
 
-  if (pago && num(pago.monto) > 0) {
-    await db(sb.from("pagos").insert({
-      orden_id: orden.id,
-      monto: num(pago.monto),
-      metodo: pago.metodo || "efectivo",
-      nota: "Abono inicial",
-      usuario: (await sesionActual()).user.id
-    }));
+  const pagos = Array.isArray(pago) ? pago : (pago ? [pago] : []);
+  const filasPago = [];
+  if (pagos.length) {
+    const s = await sesionActual();
+    pagos.forEach(function (p) {
+      if (num(p.monto) <= 0) return;
+      filasPago.push({
+        orden_id: orden.id,
+        monto: num(p.monto),
+        metodo: p.metodo || "efectivo",
+        nota: (p.nota || "Abono inicial").trim() || null,
+        fecha: fechaPago(p.fecha),
+        usuario: s ? s.user.id : null
+      });
+    });
   }
+  if (filasPago.length) await db(sb.from("pagos").insert(filasPago));
 
   return orden;
 }
@@ -263,16 +271,29 @@ async function eliminarItem(id) {
 }
 
 /* ---------------- PAGOS ---------------- */
+function fechaPago(f) {
+  if (!f) return new Date().toISOString();
+  const txt = String(f);
+  if (txt.length > 10) return new Date(txt).toISOString();
+  return new Date(txt + "T" + new Date().toTimeString().slice(0, 8)).toISOString();
+}
+
 async function agregarPago(ordenId, pago) {
   const s = await sesionActual();
-  return db(sb.from("pagos").insert({
-    orden_id: ordenId,
-    monto: num(pago.monto),
-    metodo: pago.metodo || "efectivo",
-    nota: (pago.nota || "").trim() || null,
-    fecha: pago.fecha ? new Date(pago.fecha + "T" + new Date().toTimeString().slice(0, 8)).toISOString() : new Date().toISOString(),
-    usuario: s ? s.user.id : null
-  }).select().single());
+  const pagos = Array.isArray(pago) ? pago : [pago];
+  const filas = pagos.filter(function (p) { return num(p.monto) > 0; })
+    .map(function (p) {
+      return {
+        orden_id: ordenId,
+        monto: num(p.monto),
+        metodo: p.metodo || "efectivo",
+        nota: (p.nota || "").trim() || null,
+        fecha: fechaPago(p.fecha),
+        usuario: s ? s.user.id : null
+      };
+    });
+  if (!filas.length) throw new Error("Escribe un monto mayor a 0.");
+  return db(sb.from("pagos").insert(filas).select());
 }
 
 async function eliminarPago(id) {

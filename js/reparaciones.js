@@ -177,15 +177,21 @@ async function vistaNueva() {
       '<div class="grid-2">' +
         '<section class="box">' +
           "<h3><i class=\"ti ti-cash\"></i> Cobro</h3>" +
-          '<div class="grid-3-in">' +
-            '<div><label class="lb">Gastos generales</label><input id="o-gastos" type="number" inputmode="numeric" value="0"></div>' +
+          '<div class="grid-2-in">' +
             '<div><label class="lb">Descuento</label><input id="o-descuento" type="number" inputmode="numeric" value="0"></div>' +
             '<div><label class="lb">Garantía (días)</label><input id="o-garantia" type="number" inputmode="numeric" value="30"></div>' +
           "</div>" +
           '<label class="lb">Abono inicial (opcional)</label>' +
           '<div class="fila-inline">' +
             '<input id="o-abono" type="number" inputmode="numeric" placeholder="0">' +
-            '<select id="o-metodo">' + METODOS.map(function (m) { return '<option value="' + m.k + '">' + m.n + "</option>"; }).join("") + "</select>" +
+            '<select id="o-metodo">' + METODOS_PAGO.map(function (m) { return '<option value="' + m.k + '">' + m.n + "</option>"; }).join("") + "</select>" +
+          "</div>" +
+          '<div id="o-mixto" class="mixto-pago oculto">' +
+            '<div class="grid-3-in">' +
+              '<div><label class="lb">Efectivo</label><input id="o-mix-efectivo" type="number" inputmode="numeric" placeholder="0"></div>' +
+              '<div><label class="lb">Transferencia</label><input id="o-mix-transferencia" type="number" inputmode="numeric" placeholder="0"></div>' +
+              '<div><label class="lb">Tarjeta</label><input id="o-mix-tarjeta" type="number" inputmode="numeric" placeholder="0"></div>' +
+            "</div>" +
           "</div>" +
         "</section>" +
 
@@ -211,7 +217,16 @@ async function vistaNueva() {
   montarDatalist(catalogo);
   montarBuscadorCliente($("#o-nombre"), $("#o-cliente-id"), $("#o-telefono"));
   agregarFilaItem();
-  $$("#o-gastos, #o-descuento, #o-abono").forEach(function (el) { el.addEventListener("input", recalcularForm); });
+  $$("#o-descuento, #o-abono, #o-mix-efectivo, #o-mix-transferencia, #o-mix-tarjeta").forEach(function (el) { el.addEventListener("input", recalcularForm); });
+  $("#o-metodo").addEventListener("change", function () {
+    var mixto = this.value === "mixto";
+    $("#o-abono").classList.toggle("oculto", mixto);
+    $("#o-mixto").classList.toggle("oculto", !mixto);
+    if (mixto && !$("#o-mix-efectivo").value && num($("#o-abono").value) > 0) {
+      $("#o-mix-efectivo").value = $("#o-abono").value;
+    }
+    recalcularForm();
+  });
   $("#btn-add-item").addEventListener("click", function () { agregarFilaItem(); });
   $("#items").addEventListener("click", function (e) {
     var b = e.target.closest("[data-quitar]");
@@ -264,6 +279,13 @@ function montarDatalist(lista) {
   }).join("");
 }
 
+function abonoInicial() {
+  if ($("#o-metodo") && $("#o-metodo").value === "mixto") {
+    return num($("#o-mix-efectivo").value) + num($("#o-mix-transferencia").value) + num($("#o-mix-tarjeta").value);
+  }
+  return num($("#o-abono") ? $("#o-abono").value : 0);
+}
+
 function recalcularForm() {
   if (!$("#items")) return;
   var items = leerItems();
@@ -272,8 +294,7 @@ function recalcularForm() {
   var repuestos = items.reduce(function (s, i) { return s + i.costo_repuestos; }, 0);
   var costoSer = items.reduce(function (s, i) { return s + i.costo_unitario * i.cantidad; }, 0);
   var desc = num($("#o-descuento") ? $("#o-descuento").value : 0);
-  var gastos = num($("#o-gastos") ? $("#o-gastos").value : 0);
-  var abono = num($("#o-abono") ? $("#o-abono").value : 0);
+  var abono = abonoInicial();
 
   $$("#items .fila-item").forEach(function (f) {
     var c = num($(".it-cant", f).value) || 1;
@@ -281,12 +302,12 @@ function recalcularForm() {
     $(".it-sub", f).textContent = cop(c * p);
   });
 
-  var ganancia = total - desc - costoSer - envio - repuestos - gastos;
+  var ganancia = total - desc - costoSer - envio - repuestos;
   var debe = total - desc - abono;
 
   $("#t-total").textContent = cop(total - desc);
   $("#t-repuestos").textContent = cop(repuestos);
-  $("#t-gastos").textContent = cop(costoSer + gastos);
+  $("#t-gastos").textContent = cop(costoSer);
   $("#t-envio").textContent = cop(envio);
   $("#t-descuento").textContent = cop(desc);
   $("#t-ganancia").textContent = cop(ganancia);
@@ -324,17 +345,24 @@ async function guardarNuevaOrden(e) {
       falla: $("#o-falla").value,
       tecnico: $("#o-tecnico").value,
       prioridad: $("#o-prioridad").value,
-      gastos: $("#o-gastos").value,
       descuento: $("#o-descuento").value,
       garantia_dias: $("#o-garantia").value,
       fecha_prometida: $("#o-prometida").value || null,
       notas: $("#o-notas").value
     };
-    var pago = Number($("#o-abono").value) > 0
-      ? { monto: $("#o-abono").value, metodo: $("#o-metodo").value }
-      : null;
+    var metodo = $("#o-metodo").value;
+    var pagos = [];
+    if (metodo === "mixto") {
+      ["efectivo", "transferencia", "tarjeta"].forEach(function (m) {
+        var v = num($("#o-mix-" + m).value);
+        if (v > 0) pagos.push({ monto: v, metodo: m, nota: "Abono inicial" });
+      });
+    } else {
+      var v = num($("#o-abono").value);
+      if (v > 0) pagos.push({ monto: v, metodo: metodo, nota: "Abono inicial" });
+    }
 
-    var orden = await crearOrden(cab, items, pago);
+    var orden = await crearOrden(cab, items, pagos.length ? pagos : null);
     _clientesCache = null;
     toast("Orden #" + String(orden.numero).padStart(4, "0") + " creada");
     navegar("#/orden/" + orden.id);
@@ -603,24 +631,57 @@ function modalPago(o, sugerido) {
     "<h3>Registrar abono</h3>" +
     "<p class=\"modal-sub\">Orden #" + String(o.numero).padStart(4, "0") + " · Saldo " + cop(o.saldo) + "</p>" +
     '<form id="form-pago" class="form-modal">' +
-      '<label class="lb">Monto</label>' +
-      '<input id="pg-monto" type="number" inputmode="numeric" value="' + (sugerido || "") + '" placeholder="0" required>' +
+      '<label class="lb">Fecha</label>' +
+      '<input id="pg-fecha" type="date" value="' + hoyInput() + '" required>' +
       '<label class="lb">Método</label>' +
-      '<select id="pg-metodo">' + METODOS.map(function (m) { return '<option value="' + m.k + '">' + m.n + "</option>"; }).join("") + "</select>" +
+      '<select id="pg-metodo">' + METODOS_PAGO.map(function (m) { return '<option value="' + m.k + '">' + m.n + "</option>"; }).join("") + "</select>" +
+      '<div id="pg-simple">' +
+        '<label class="lb">Monto</label>' +
+        '<input id="pg-monto" type="number" inputmode="numeric" value="' + (sugerido || "") + '" placeholder="0">' +
+      "</div>" +
+      '<div id="pg-mixto" class="mixto-pago oculto">' +
+        '<div class="grid-3-in">' +
+          '<div><label class="lb">Efectivo</label><input id="pg-mix-efectivo" type="number" inputmode="numeric" placeholder="0"></div>' +
+          '<div><label class="lb">Transferencia</label><input id="pg-mix-transferencia" type="number" inputmode="numeric" placeholder="0"></div>' +
+          '<div><label class="lb">Tarjeta</label><input id="pg-mix-tarjeta" type="number" inputmode="numeric" placeholder="0"></div>' +
+        "</div>" +
+      "</div>" +
       '<label class="lb">Nota (opcional)</label>' +
       '<input id="pg-nota" placeholder="Ej. abono en efectivo">' +
       '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
         '<button class="btn"><i class="ti ti-check"></i> Registrar</button></div>' +
     "</form>"
   );
+
+  $("#pg-metodo").addEventListener("change", function () {
+    var mixto = this.value === "mixto";
+    $("#pg-simple").classList.toggle("oculto", mixto);
+    $("#pg-mixto").classList.toggle("oculto", !mixto);
+    if (mixto && !$("#pg-mix-efectivo").value && num($("#pg-monto").value) > 0) {
+      $("#pg-mix-efectivo").value = $("#pg-monto").value;
+    }
+  });
+
   $("#form-pago").addEventListener("submit", async function (e) {
     e.preventDefault();
     try {
-      await agregarPago(o.id, {
-        monto: $("#pg-monto").value,
-        metodo: $("#pg-metodo").value,
-        nota: $("#pg-nota").value
-      });
+      var metodo = $("#pg-metodo").value;
+      var nota = $("#pg-nota").value;
+      var fecha = $("#pg-fecha").value;
+      var pagos = [];
+
+      if (metodo === "mixto") {
+        ["efectivo", "transferencia", "tarjeta"].forEach(function (m) {
+          var v = num($("#pg-mix-" + m).value);
+          if (v > 0) pagos.push({ monto: v, metodo: m, nota: nota || "Abono mixto", fecha: fecha });
+        });
+      } else {
+        var v = num($("#pg-monto").value);
+        if (v > 0) pagos.push({ monto: v, metodo: metodo, nota: nota, fecha: fecha });
+      }
+
+      if (!pagos.length) throw new Error("Escribe un monto mayor a 0.");
+      await agregarPago(o.id, pagos);
       cerrarModal();
       toast("Abono registrado");
       recargar();
@@ -640,7 +701,6 @@ function modalEditar(o) {
         '<div><label class="lb">IMEI / serial</label><input id="ed-imei" value="' + esc(o.imei || "") + '"></div>' +
         '<div><label class="lb">Técnico</label><input id="ed-tecnico" value="' + esc(o.tecnico || "") + '"></div>' +
         '<div><label class="lb">Envío adicional</label><input id="ed-envio" type="number" value="' + Number(o.envio_extra || 0) + '"></div>' +
-        '<div><label class="lb">Otros gastos</label><input id="ed-gastos" type="number" value="' + Number(o.gastos) + '"></div>' +
         '<div><label class="lb">Descuento</label><input id="ed-descuento" type="number" value="' + Number(o.descuento) + '"></div>' +
         '<div><label class="lb">Garantía (días)</label><input id="ed-garantia" type="number" value="' + Number(o.garantia_dias) + '"></div>' +
         '<div><label class="lb">Fecha prometida</label><input id="ed-prometida" type="date" value="' + inputDate(o.fecha_prometida) + '"></div>' +
@@ -663,7 +723,6 @@ function modalEditar(o) {
         imei: $("#ed-imei").value,
         tecnico: $("#ed-tecnico").value,
         envio_extra: $("#ed-envio").value,
-        gastos: $("#ed-gastos").value,
         descuento: $("#ed-descuento").value,
         garantia_dias: $("#ed-garantia").value,
         fecha_prometida: $("#ed-prometida").value || null,

@@ -133,13 +133,14 @@ El catálogo de servicios solo guarda nombres: **no tiene precios**.
 ```
 cobrado  = suma de precios cobrados − descuento
 repuesto = suma de costos de repuestos de cada reparación
-gastos   = suma de gastos de cada reparación + gastos generales
+gastos   = suma de gastos de cada reparación (+ gastos generales de órdenes antiguas)
 envíos   = suma de envíos de cada reparación + envío adicional
 ganancia = cobrado − repuesto − gastos − envíos
 debe     = cobrado − suma de abonos
 ```
 
 - **El envío, los repuestos y los gastos son costos del negocio**, no se suman al total.
+- Los **abonos** se registran con fecha, monto y medio de pago. Si el abono es **mixto**, se guarda un registro por cada medio (efectivo, transferencia o tarjeta) para que la caja y los reportes cuadren.
 - El **debe nunca se escribe a mano**: lo calcula la base de datos cada vez que agregas una reparación o un abono.
 - El **saldo nunca se escribe a mano**: lo calcula la base de datos cada vez que agregas un ítem o un abono.
 - Una orden **no se puede marcar como entregada si tiene saldo**. La base de datos lo bloquea.
