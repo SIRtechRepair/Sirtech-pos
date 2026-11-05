@@ -82,6 +82,11 @@ Abre `http://localhost:8080`.
 
 > No lo abras con doble clic (`file://`): el login necesita un origen HTTP.
 
+### Cambiar la contraseña
+
+Con la sesión iniciada, usa el botón de la **llave** (arriba a la derecha).
+No necesitas correo ni confirmación.
+
 ---
 
 ## 3. Publicar en GitHub Pages
