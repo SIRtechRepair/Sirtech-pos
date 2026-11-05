@@ -71,7 +71,7 @@ async function iniciar() {
   window.addEventListener("hashchange", router);
 
   document.addEventListener("click", function (e) {
-    var el = e.target.closest("[data-hash]");
+    var el = e.target.closest && e.target.closest("[data-hash]");
     if (el) {
       e.preventDefault();
       navegar(el.dataset.hash);
