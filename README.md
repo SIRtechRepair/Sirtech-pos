@@ -8,7 +8,7 @@ HTML + JavaScript puro, sin frameworks ni build. Base de datos en Supabase.
 - ✅ Esquema y seguridad aplicados en Supabase
 - ✅ Histórico importado: 1.409 órdenes, 915 clientes, 2.129 ítems, 1.382 abonos
 - ✅ Usuario administrador activo
-- ⬜ Falta publicar en GitHub Pages (sección 3)
+- ✅ Publicado en GitHub Pages: <https://sirtechrepair.github.io/Sirtech-pos/>
 
 > Las secciones 1 y 2 quedan como documentación para reinstalar desde cero.
 
@@ -90,6 +90,9 @@ No necesitas correo ni confirmación.
 ---
 
 ## 3. Publicar en GitHub Pages
+
+> ✅ Ya está publicado en <https://sirtechrepair.github.io/Sirtech-pos/>.
+> Los pasos siguientes quedan como referencia para reinstalar desde cero.
 
 1. Crea un repositorio **vacío** en GitHub llamado `Sirtech-pos` (sin README ni .gitignore).
 2. Conecta y sube:
