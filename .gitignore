@@ -1,0 +1,11 @@
+node_modules/
+.DS_Store
+*.log
+.env
+
+# Archivos de importación: contienen datos reales de clientes.
+# Se regeneran con: python3 import/generar_sql.py
+sql/03_import_clientes.sql
+sql/04_import_ordenes.sql
+sql/05_import_items.sql
+sql/06_import_pagos_estados.sql

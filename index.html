@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0a0a0a">
+  <title>SIR·TECH · POS</title>
+  <link rel="icon" href="sirtech.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+  <link rel="stylesheet" href="css/pos.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+  <!-- ============ LOGIN ============ -->
+  <div id="login" class="login-wrap">
+    <form id="form-login" class="login-card" autocomplete="on">
+      <img src="sirtech.png" alt="SIR·TECH" class="login-logo">
+      <small class="login-kicker">SISTEMA POS</small>
+      <h1>SIR·TECH</h1>
+      <p class="login-sub">Control de reparaciones, accesorios y equipos</p>
+
+      <label class="lb" for="email">Correo</label>
+      <input id="email" type="email" name="email" autocomplete="username" placeholder="tu@correo.com" required>
+
+      <label class="lb" for="pass">Contraseña</label>
+      <input id="pass" type="password" name="password" autocomplete="current-password" placeholder="••••••••" required>
+
+      <button type="submit" class="btn btn-full" id="btn-entrar">
+        <i class="ti ti-login"></i> Entrar
+      </button>
+      <p class="msg" id="msg-login"></p>
+    </form>
+  </div>
+
+  <!-- ============ APP ============ -->
+  <div id="app" class="oculto">
+    <header class="top">
+      <div class="brand">
+        <img src="sirtech.png" alt="">
+        <div>
+          <small>SISTEMA POS</small>
+          <b>SIR·TECH</b>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="btn btn-sm" id="btn-nueva" title="Nueva orden">
+          <i class="ti ti-plus"></i><span class="solo-pc">Nueva orden</span>
+        </button>
+        <button class="btn-ghost" id="btn-salir" title="Salir">
+          <i class="ti ti-logout"></i>
+        </button>
+      </div>
+    </header>
+
+    <nav class="tabs" id="tabs"></nav>
+
+    <main id="vista">
+      <div class="cargando"><i class="ti ti-loader-2 girando"></i> Cargando…</div>
+    </main>
+  </div>
+
+  <!-- ============ MODAL / TOAST ============ -->
+  <div id="modal" class="modal oculto">
+    <div class="modal-box" id="modal-box"></div>
+  </div>
+
+  <div id="toast" class="toast oculto"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/reparaciones.js"></script>
+  <script src="js/clientes.js"></script>
+  <script src="js/dinero.js"></script>
+  <script src="js/reportes.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
