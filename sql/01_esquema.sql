@@ -86,8 +86,8 @@ create table if not exists public.ordenes (
   falla           text,
   diagnostico     text,
   tecnico         text,
-  estado          text not null default 'recibido'
-                  check (estado in ('recibido','diagnostico','esperando_repuesto',
+  estado          text not null default 'diagnostico'
+                  check (estado in ('diagnostico','esperando_repuesto',
                                     'reparando','listo','entregado','no_reparable','cancelado')),
   prioridad       text not null default 'normal' check (prioridad in ('normal','urgente')),
   envio           numeric(12,2) not null default 0,   -- costo de envío (lo asume el negocio)

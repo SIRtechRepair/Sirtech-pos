@@ -385,7 +385,7 @@ async function vistaOrden(params) {
         '<section class="box estados-box">' +
           '<div class="estado-actual" style="--pc:' + e.c + '"><i class="ti ' + e.i + '"></i><b>' + esc(e.n) + "</b></div>" +
           '<div class="estado-botones">' +
-            ESTADOS.filter(function (x) { return ["recibido","diagnostico","esperando_repuesto","reparando","listo","no_reparable","cancelado"].indexOf(x.k) > -1; })
+            ESTADOS.filter(function (x) { return ["diagnostico","esperando_repuesto","reparando","listo","no_reparable","cancelado"].indexOf(x.k) > -1; })
               .map(function (x) {
                 return '<button class="btn-estado' + (x.k === o.estado ? " on" : "") + '" data-estado="' + x.k + '" style="--pc:' + x.c + '">' + esc(x.n) + "</button>";
               }).join("") +
@@ -483,6 +483,7 @@ async function vistaOrden(params) {
       "</aside>" +
     "</div>";
 
+  montarDatalist(catalogo);
   conectarDetalle(o, d);
 }
 
@@ -518,8 +519,6 @@ function conectarDetalle(o, d) {
       } catch (e) { toast(errorDe(e), "error"); }
     });
   });
-
-  montarDatalist(catalogo);
 
   var btnEntregar = $("#btn-entregar");
   if (btnEntregar) btnEntregar.addEventListener("click", async function () {

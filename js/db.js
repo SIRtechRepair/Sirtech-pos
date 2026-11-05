@@ -186,7 +186,7 @@ async function crearOrden(cab, items, pago) {
     falla: (cab.falla || "").trim() || null,
     diagnostico: (cab.diagnostico || "").trim() || null,
     tecnico: (cab.tecnico || "").trim() || null,
-    estado: cab.estado || "recibido",
+    estado: cab.estado || "diagnostico",
     prioridad: cab.prioridad || "normal",
     envio: 0,
     gastos: num(cab.gastos),

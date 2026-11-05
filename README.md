@@ -49,6 +49,7 @@ Después de lo anterior, ejecuta en orden:
 | 6 | `sql/05_import_items.sql` | 2.129 ítems (servicios y repuestos) |
 | 7 | `sql/06_import_pagos_estados.sql` | 1.382 abonos y estados finales |
 | 8 | `sql/08_servicios.sql` | Catálogo de servicios, normalización y costos por reparación |
+| 9 | `sql/09_quitar_recibido.sql` | Elimina el estado "recibido" del flujo |
 
 Cada archivo abre y cierra su propia transacción: si algo falla, no deja datos a medias.
 

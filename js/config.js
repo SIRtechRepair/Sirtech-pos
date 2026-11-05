@@ -15,7 +15,6 @@ const CFG = {
 
 /* Estados de una orden, en el orden del tablero */
 const ESTADOS = [
-  { k: "recibido",           n: "Recibido",           c: "#8b9bb0", i: "ti-inbox" },
   { k: "diagnostico",        n: "En diagnóstico",     c: "#c9973f", i: "ti-zoom-scan" },
   { k: "esperando_repuesto", n: "Esperando repuesto", c: "#b45309", i: "ti-truck-delivery" },
   { k: "reparando",          n: "Reparando",          c: "#2563eb", i: "ti-tool" },
@@ -25,7 +24,7 @@ const ESTADOS = [
   { k: "cancelado",          n: "Cancelado",          c: "#5b5b5b", i: "ti-x" }
 ];
 
-const ESTADOS_ABIERTOS = ["recibido", "diagnostico", "esperando_repuesto", "reparando", "listo"];
+const ESTADOS_ABIERTOS = ["diagnostico", "esperando_repuesto", "reparando", "listo"];
 const ESTADOS_FINALES  = ["entregado", "no_reparable", "cancelado"];
 
 const METODOS = [
