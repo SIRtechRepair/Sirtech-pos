@@ -4,6 +4,58 @@
 
 let modoEq = "ventas";
 let origenEq = "";
+let filtroEq = [];
+
+function mesSiguiente() {
+  var d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + 1);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+}
+
+function sumarMeses(fecha, meses) {
+  var p = String(fecha).split("-");
+  var d = new Date(Number(p[0]), Number(p[1]) - 1 + meses, 1);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-01";
+}
+
+function eqTelefono(v) {
+  var raw = String(v.contacto || "").replace(/\D/g, "");
+  if (raw.length >= 10 && raw.length <= 11) return "57" + raw.slice(-10);
+  var tel = String(v.cliente_telefono || "").replace(/\D/g, "");
+  if (tel.length >= 10) return "57" + tel.slice(-10);
+  return "";
+}
+
+function eqWhatsApp(v) {
+  var tel = eqTelefono(v);
+  if (!tel) {
+    toast("No hay un teléfono válido registrado para este cliente.", "error");
+    return;
+  }
+  var msg = "Hola " + (v.comprador || "") + ", te escribimos de SIR·TECH. " +
+    "Tu equipo " + v.equipo + " está en mora con " + (v.dias_mora || 0) +
+    " días de atraso. Saldo pendiente: " + cop(v.saldo) + ". " +
+    "Por favor comunícate para ponerte al día.";
+  window.open("https://wa.me/" + tel + "?text=" + encodeURIComponent(msg), "_blank");
+}
+
+function eqCoincide(v) {
+  if (!filtroEq.length) return true;
+  return filtroEq.some(function (f) {
+    if (f === "pagada") return Number(v.saldo) <= 0.5 && v.estado_pago !== "cancelada";
+    if (f === "por_pagar") return Number(v.saldo) > 0.5 && v.estado_pago !== "cancelada";
+    if (f === "en_mora") return !!v.en_mora;
+    return v.estado_equipo === f;
+  });
+}
+
+function marcarFiltrosEq() {
+  $$("#eq-filtros [data-feq]").forEach(function (b) {
+    if (b.dataset.feq === "limpiar") b.classList.toggle("on", filtroEq.length === 0);
+    else b.classList.toggle("on", filtroEq.indexOf(b.dataset.feq) > -1);
+  });
+}
 
 function eqMetodos(sel) {
   return METODOS_PAGO.filter(function (m) { return m.k !== "mixto"; })
@@ -31,7 +83,28 @@ async function vistaEquipos() {
         '<select id="eq-origen"><option value="">Todos</option><option value="SNEIDER">Sneider</option><option value="SOCIEDAD">Sociedad</option></select>' +
       "</div>" +
     "</div>" +
+    '<div class="filtros" id="eq-filtros">' +
+      '<span class="mini">Estado:</span>' +
+      '<button class="btn-ghost btn-sm filtro-chip" data-feq="pagada">Pagada</button>' +
+      '<button class="btn-ghost btn-sm filtro-chip" data-feq="por_pagar">Por pagar</button>' +
+      '<button class="btn-ghost btn-sm filtro-chip" data-feq="en_mora">En mora</button>' +
+      '<button class="btn-ghost btn-sm filtro-chip" data-feq="en_reparacion">En reparación</button>' +
+      '<button class="btn-ghost btn-sm filtro-chip" data-feq="garantia">Garantía</button>' +
+      '<button class="btn-ghost btn-sm filtro-chip" data-feq="disponible">Disponible</button>' +
+      '<button class="btn-ghost btn-sm filtro-chip" data-feq="limpiar">Todos</button>' +
+    "</div>" +
     '<div id="zona-eq">' + cargando() + "</div>";
+
+  $("#eq-filtros").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-feq]");
+    if (!b) return;
+    var f = b.dataset.feq;
+    if (f === "limpiar") filtroEq = [];
+    else if (filtroEq.indexOf(f) > -1) filtroEq = filtroEq.filter(function (x) { return x !== f; });
+    else filtroEq.push(f);
+    marcarFiltrosEq();
+    pintarEquipos();
+  });
 
   $("#eq-modo").addEventListener("click", function (e) {
     var b = e.target.closest("[data-eq]");
@@ -46,6 +119,7 @@ async function vistaEquipos() {
     pintarEquipos();
   });
   $$("#eq-modo [data-eq]").forEach(function (x) { x.classList.toggle("on", x.dataset.eq === modoEq); });
+  marcarFiltrosEq();
   pintarEquipos();
 }
 
@@ -54,6 +128,7 @@ async function pintarEquipos() {
   if (!zona) return;
   zona.innerHTML = cargando();
   try {
+    if ($("#eq-filtros")) $("#eq-filtros").classList.toggle("oculto", modoEq === "inventario");
     if (modoEq === "inventario") {
       var q = sb.from("equipos_unidades").select("*")
         .in("estado", ["disponible", "en_reparacion", "consignacion"])
@@ -67,6 +142,7 @@ async function pintarEquipos() {
       if (modoEq === "creditos") qv = qv.gt("saldo", 0.5);
       if (origenEq) qv = qv.eq("origen", origenEq);
       var ventas = await db(qv);
+      ventas = ventas.filter(eqCoincide);
       zona.innerHTML = modoEq === "creditos" ? htmlCreditosEq(ventas) : htmlVentasEq(ventas);
       conectarVentasEq(ventas);
     }
@@ -98,7 +174,7 @@ function htmlVentasEq(ventas) {
             '<td class="der mono">' + cop(v.total) + "</td>" +
             '<td class="der mono">' + cop(v.pagado) + "</td>" +
             '<td class="der mono ' + (Number(v.saldo) > 0.5 ? "rojo" : "verde") + '">' + cop(v.saldo) + "</td>" +
-            "<td>" + eqBadgePago(v) + "</td><td>" + esc(v.origen) + "</td>" +
+            "<td>" + eqBadgePago(v) + (v.en_mora ? ' <span class="tag tag-mora">Mora ' + v.dias_mora + "d</span>" : "") + "</td><td>" + esc(v.origen) + "</td>" +
             '<td class="der"><button class="x" data-ver-eq="' + v.id + '" title="Ver"><i class="ti ti-eye"></i></button></td></tr>';
         }).join("") : '<tr><td colspan="10">' + vacio("Sin ventas registradas.", "ti-receipt") + "</td></tr>") +
       "</tbody></table></div></div>";
@@ -117,7 +193,7 @@ function htmlCreditosEq(ventas) {
     '<div class="box">' +
       '<div class="box-head"><h3><i class="ti ti-credit-card"></i> Créditos pendientes</h3></div>' +
       '<div class="tabla-wrap"><table class="tabla"><thead><tr><th>#</th><th>Fecha</th><th>Equipo</th><th>Comprador</th>' +
-        '<th class="der">Total</th><th class="der">Abonos</th><th class="der">Debe</th><th class="der">Cuotas</th><th></th></tr></thead><tbody>' +
+        '<th class="der">Total</th><th class="der">Abonos</th><th class="der">Debe</th><th class="der">Cuotas</th><th>Mora</th><th></th></tr></thead><tbody>' +
         (ventas.length ? ventas.map(function (v) {
           return "<tr><td class=\"mono\">" + v.numero + "</td><td>" + fdate(v.fecha) + "</td><td><b>" + esc(v.equipo) + "</b></td>" +
             "<td>" + esc(v.comprador || "—") + "</td>" +
@@ -125,8 +201,12 @@ function htmlCreditosEq(ventas) {
             '<td class="der mono">' + cop(v.pagado) + "</td>" +
             '<td class="der mono rojo">' + cop(v.saldo) + "</td>" +
             '<td class="der mono">' + (v.cuotas_pendientes || 0) + "</td>" +
-            '<td class="der"><button class="x" data-ver-eq="' + v.id + '" title="Ver"><i class="ti ti-eye"></i></button></td></tr>';
-        }).join("") : '<tr><td colspan="9">' + vacio("Sin créditos pendientes.", "ti-circle-check") + "</td></tr>") +
+            "<td>" + (v.en_mora ? '<span class="tag tag-mora">' + v.dias_mora + " días</span>" : "—") + "</td>" +
+            '<td class="der"><span class="acciones-item">' +
+              (v.en_mora ? '<button class="x" data-wa-eq="' + v.id + '" title="WhatsApp"><i class="ti ti-brand-whatsapp"></i></button>' : "") +
+              '<button class="x" data-ver-eq="' + v.id + '" title="Ver"><i class="ti ti-eye"></i></button>' +
+            "</span></td></tr>";
+        }).join("") : '<tr><td colspan="10">' + vacio("Sin créditos pendientes.", "ti-circle-check") + "</td></tr>") +
       "</tbody></table></div></div>";
 }
 
@@ -137,6 +217,12 @@ function conectarVentasEq(ventas) {
     b.addEventListener("click", function () {
       var v = ventas.find(function (x) { return String(x.id) === String(b.dataset.verEq); });
       if (v) modalDetalleEq(v);
+    });
+  });
+  $$("[data-wa-eq]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var v = ventas.find(function (x) { return String(x.id) === String(b.dataset.waEq); });
+      if (v) eqWhatsApp(v);
     });
   });
 }
@@ -308,12 +394,13 @@ async function modalVentaEq() {
         '<div class="grid-2-in">' +
           '<div><label class="lb">Cuota inicial</label><input id="ev-inicial" type="number" value="0"></div>' +
           '<div><label class="lb">Número de cuotas</label><input id="ev-ncuotas" type="number" value="0"></div>' +
+          '<div><label class="lb">Mes del primer pago</label><input id="ev-primer-pago" type="month" value="' + mesSiguiente() + '"></div>' +
           '<div><label class="lb">Cuota mensual (calculada)</label><input id="ev-vcuota" type="number" readonly></div>' +
         "</div>" +
         '<div class="sep"></div>' +
         '<div class="res-linea mini"><span>Monto a financiar</span><b id="ev-fin-monto">$0</b></div>' +
         '<div class="res-linea mini"><span>Interés (70% anual)</span><b id="ev-fin-interes">$0</b></div>' +
-        '<div class="res-linea mini"><span>Total financiado</span><b id="ev-fin-total">$0</b></div>' +
+        '<div class="res-linea mini"><span>Total a cobrar con interés</span><b id="ev-fin-total">$0</b></div>' +
       "</div>" +
       '<label class="lb">Método de pago</label><select id="ev-metodo">' + eqMetodos("efectivo") + "</select>" +
       '<label class="lb">Notas</label><input id="ev-notas" placeholder="Opcional">' +
@@ -330,15 +417,16 @@ async function modalVentaEq() {
     var n = Math.max(0, Math.round(num($("#ev-ncuotas").value)));
     var monto = Math.max(contado - inicial, 0);
     var interes = monto * 0.70 * (n / 12);
-    var totalFin = monto + interes;
-    var cuota = n > 0 ? totalFin / n : 0;
+    var totalCobrar = contado + interes;
+    var saldoFin = monto + interes;
+    var cuota = n > 0 ? saldoFin / n : 0;
     var tipo = $("#ev-tipo").value;
-    var totalReg = tipo === "cuotas" ? totalFin : contado;
+    var totalReg = tipo === "cuotas" ? totalCobrar : contado;
 
     $("#ev-vcuota").value = tipo === "cuotas" ? Math.round(cuota) : 0;
     $("#ev-fin-monto").textContent = cop(monto);
     $("#ev-fin-interes").textContent = cop(interes);
-    $("#ev-fin-total").textContent = cop(totalFin);
+    $("#ev-fin-total").textContent = cop(totalCobrar);
     $("#ev-total-reg").textContent = cop(totalReg);
 
     var g = totalReg - num($("#ev-costo").value) - num($("#ev-comision").value) - num($("#ev-envio").value) - num($("#ev-gastos").value);
@@ -347,7 +435,8 @@ async function modalVentaEq() {
 
     return {
       contado: contado, inicial: inicial, n: n, monto: monto,
-      interes: interes, totalFin: totalFin, cuota: cuota, totalReg: totalReg
+      interes: interes, totalCobrar: totalCobrar, saldoFin: saldoFin,
+      cuota: cuota, totalReg: totalReg
     };
   }
 
@@ -394,10 +483,12 @@ async function modalVentaEq() {
         if (fin.cuota <= 0) throw new Error("La cuota mensual debe ser mayor a 0.");
       }
 
-      var totalReg = tipo === "cuotas" ? fin.totalFin : fin.contado;
+      var totalReg = tipo === "cuotas" ? fin.totalCobrar : fin.contado;
       var inicial = tipo === "cuotas" ? fin.inicial : fin.contado;
       var ncuotas = tipo === "cuotas" ? fin.n : 0;
       var vcuota = tipo === "cuotas" ? Math.round(fin.cuota) : 0;
+      var primerMes = $("#ev-primer-pago") && $("#ev-primer-pago").value ? $("#ev-primer-pago").value : mesSiguiente();
+      var primerPago = primerMes + "-01";
 
       var venta = {
         fecha: $("#ev-fecha").value ? $("#ev-fecha").value + "T12:00:00" : new Date().toISOString(),
@@ -435,7 +526,18 @@ async function modalVentaEq() {
 
       var ventaId = await db(sb.rpc("crear_venta_equipo", { p_venta: venta, p_pagos: pagos, p_agregados: [] }));
       if (ventaId) {
-        await db(sb.from("equipo_ventas").update({ precio_contado: fin.contado }).eq("id", ventaId));
+        var cambios = { precio_contado: fin.contado };
+        if (tipo === "cuotas") cambios.primer_pago = primerPago;
+        await db(sb.from("equipo_ventas").update(cambios).eq("id", ventaId));
+
+        if (tipo === "cuotas") {
+          var cuotas = await db(sb.from("equipo_cuotas").select("id,numero").eq("venta_id", ventaId).order("numero"));
+          for (var i = 0; i < cuotas.length; i++) {
+            await db(sb.from("equipo_cuotas")
+              .update({ fecha_vencimiento: sumarMeses(primerPago, i) })
+              .eq("id", cuotas[i].id));
+          }
+        }
       }
       cerrarModal();
       toast("Venta de equipo registrada");
@@ -463,6 +565,9 @@ async function modalDetalleEq(v) {
       '<div class="res-linea mini"><span>Ganancia</span><b>' + cop(v.ganancia) + "</b></div>" +
       '<div class="res-linea mini"><span>Abonos</span><b>' + cop(v.pagado) + "</b></div>" +
       '<div class="res-linea"><span>Debe</span><b class="' + (Number(v.saldo) > 0.5 ? "rojo" : "verde") + '">' + cop(v.saldo) + "</b></div>" +
+      (v.primer_pago ? '<div class="res-linea mini"><span>Primer pago</span><b>' + fdate(v.primer_pago) + "</b></div>" : "") +
+      (v.en_mora ? '<div class="aviso"><i class="ti ti-alert-triangle"></i> En mora: ' + v.dias_mora + ' días. ' +
+        '<button type="button" class="btn btn-sm" id="eq-wa"><i class="ti ti-brand-whatsapp"></i> Informar por WhatsApp</button></div>' : "") +
       '<div class="sep"></div>' +
       '<div class="box-head"><h3>Cuotas</h3>' + (Number(v.saldo) > 0.5 ? '<button class="btn-ghost btn-sm" id="eq-abono"><i class="ti ti-plus"></i> Abono general</button>' : "") + "</div>" +
       (cuotas.length ? '<div class="tabla-wrap"><table class="tabla"><thead><tr><th>#</th><th>Vence</th><th class="der">Monto</th><th class="der">Pagado</th><th>Estado</th><th></th></tr></thead><tbody>' +
@@ -499,6 +604,8 @@ async function modalDetalleEq(v) {
     });
     var btnEd = $("#eq-editar-venta");
     if (btnEd) btnEd.addEventListener("click", function () { modalEditarVentaEq(v); });
+    var btnWa = $("#eq-wa");
+    if (btnWa) btnWa.addEventListener("click", function () { eqWhatsApp(v); });
     $$("[data-editar-cuota]").forEach(function (b) {
       b.addEventListener("click", function () {
         var c = cuotas.find(function (x) { return String(x.id) === String(b.dataset.editarCuota); });
@@ -537,6 +644,7 @@ function modalEditarVentaEq(v) {
         '<div><label class="lb">Inicial</label><input id="ve-inicial" type="number" value="' + Number(v.inicial || 0) + '"></div>' +
         '<div><label class="lb">Número de cuotas</label><input id="ve-ncuotas" type="number" value="' + Number(v.numero_cuotas || 0) + '"></div>' +
         '<div><label class="lb">Valor de cuota</label><input id="ve-vcuota" type="number" value="' + Number(v.valor_cuota || 0) + '"></div>' +
+        '<div><label class="lb">Primer pago</label><input id="ve-primer-pago" type="date" value="' + inputDate(v.primer_pago) + '"></div>' +
         '<div><label class="lb">Origen</label><select id="ve-origen"><option value="SNEIDER"' + (v.origen === "SNEIDER" ? " selected" : "") + '>Sneider</option><option value="SOCIEDAD"' + (v.origen === "SOCIEDAD" ? " selected" : "") + '>Sociedad</option></select></div>' +
         '<div><label class="lb">De quién es</label><input id="ve-dequien" value="' + esc(v.de_quien_es || "") + '"></div>' +
         '<div><label class="lb">Estado del equipo</label><select id="ve-estado">' +
@@ -566,6 +674,7 @@ function modalEditarVentaEq(v) {
         inicial: num($("#ve-inicial").value),
         numero_cuotas: num($("#ve-ncuotas").value),
         valor_cuota: num($("#ve-vcuota").value),
+        primer_pago: $("#ve-primer-pago").value || null,
         origen: $("#ve-origen").value,
         de_quien_es: $("#ve-dequien").value.trim() || null,
         estado_equipo: $("#ve-estado").value,

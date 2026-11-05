@@ -57,6 +57,7 @@ Después de lo anterior, ejecuta en orden:
 | 13 | `sql/13_import_accesorios.sql` | Histórico de ventas de accesorios |
 | 14 | `sql/14_import_equipos.sql` | Histórico de ventas e inventario de equipos |
 | 15 | `sql/15_ajustes_ventas.sql` | Precio de contado, costo FIFO, corrección de lotes y ajuste de stock |
+| 16 | `sql/16_mora_whatsapp.sql` | Primer pago, mora automática y contacto para WhatsApp |
 
 Cada archivo abre y cierra su propia transacción: si algo falla, no deja datos a medias.
 
@@ -206,10 +207,14 @@ insert into public.servicios (nombre) values ('NOMBRE DEL SERVICIO');
 ### Equipos
 - Inventario por IMEI (disponible, en reparación, consignación, vendido).
 - Ventas de **contado** o **a cuotas**.
-- A cuotas: precio de contado, cuota inicial y número de cuotas.
+- A cuotas: precio de contado, cuota inicial, número de cuotas y **mes del primer pago**.
 - Interés del **70% anual** proporcional al plazo: 6 meses = 35% sobre el monto financiado.
+- El interés se suma al total cobrado y a la ganancia.
 - Generación automática de cuotas y registro de pagos con fecha y método.
 - Pestañas **Sneider**, **Sociedad** y **Todos** con la misma lógica.
+- Filtros por estado: pagada, por pagar, en mora, en reparación, garantía y disponible.
+- **Mora automática**: si una cuota vence y sigue pendiente, la venta muestra los días de atraso.
+- Botón de **WhatsApp** para abrir el chat del cliente con el mensaje de mora.
 - El saldo y el estado de pago se calculan solos.
 - Cualquier venta o cuota se puede corregir; los pagos se pueden eliminar y el saldo se recalcula.
 
