@@ -127,16 +127,16 @@ https://TU-USUARIO.github.io/Sirtech-pos/
 ## 4. Cómo funciona el dinero
 
 Cada orden puede tener **varias reparaciones** (servicios) en el mismo equipo.
-Cada reparación guarda su propio precio cobrado, costo del servicio, domicilio y
-costo de repuestos. El catálogo de servicios solo guarda nombres: **no tiene precios**.
+Cada reparación guarda su propio **cobrado, repuesto, gastos y envío**.
+El catálogo de servicios solo guarda nombres: **no tiene precios**.
 
 ```
-total              = suma de precios cobrados − descuento
-envíos             = suma de domicilios de cada reparación + envío adicional
-repuestos          = suma de costos de repuestos de cada reparación
-costos de servicio = suma de costos de cada reparación
-ganancia           = total − costos de servicio − envíos − repuestos − gastos
-debe               = total − suma de abonos
+cobrado  = suma de precios cobrados − descuento
+repuesto = suma de costos de repuestos de cada reparación
+gastos   = suma de gastos de cada reparación + gastos generales
+envíos   = suma de envíos de cada reparación + envío adicional
+ganancia = cobrado − repuesto − gastos − envíos
+debe     = cobrado − suma de abonos
 ```
 
 - **El envío, los repuestos y los gastos son costos del negocio**, no se suman al total.

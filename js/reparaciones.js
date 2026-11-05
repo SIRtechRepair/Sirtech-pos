@@ -160,11 +160,10 @@ async function vistaNueva() {
             '<p class="mini-vacio" id="items-vacio">Agrega el primer servicio de la reparación.</p>' +
           "</div>" +
           '<aside class="box resumen resumen-serv">' +
-            '<div class="res-linea grande"><span>Total</span><b id="t-total">$0</b></div>' +
-            '<div class="res-linea mini"><span>Envíos</span><b id="t-envio">$0</b></div>' +
-            '<div class="res-linea mini"><span>Repuestos</span><b id="t-repuestos">$0</b></div>' +
-            '<div class="res-linea mini"><span>Costos de servicios</span><b id="t-costo-serv">$0</b></div>' +
+            '<div class="res-linea grande"><span>Cobrado</span><b id="t-total">$0</b></div>' +
+            '<div class="res-linea mini"><span>Repuesto</span><b id="t-repuestos">$0</b></div>' +
             '<div class="res-linea mini"><span>Gastos</span><b id="t-gastos">$0</b></div>' +
+            '<div class="res-linea mini"><span>Envíos</span><b id="t-envio">$0</b></div>' +
             '<div class="res-linea mini"><span>Descuento</span><b id="t-descuento">$0</b></div>' +
             '<div class="sep"></div>' +
             '<div class="res-linea"><span>Ganancia</span><b id="t-ganancia">$0</b></div>' +
@@ -234,10 +233,10 @@ function agregarFilaItem(datos) {
   div.innerHTML =
     '<input class="it-serv" list="lista-servicios" placeholder="Servicio (buscar…)" value="' + esc(d.descripcion || "") + '" required>' +
     '<input class="it-cant" type="number" min="0.5" step="0.5" value="' + (d.cantidad || 1) + '" title="Cantidad">' +
-    '<input class="it-precio" type="number" inputmode="numeric" placeholder="Precio" value="' + (d.precio_unitario || "") + '" title="Precio cobrado">' +
-    '<input class="it-costo" type="number" inputmode="numeric" placeholder="Costo" value="' + (d.costo_unitario || "") + '" title="Costo del servicio">' +
-    '<input class="it-envio" type="number" inputmode="numeric" placeholder="Domicilio" value="' + (d.envio || "") + '" title="Domicilio / envío">' +
-    '<input class="it-repuestos" type="number" inputmode="numeric" placeholder="Repuestos" value="' + (d.costo_repuestos || "") + '" title="Costo de repuestos">' +
+    '<input class="it-precio" type="number" inputmode="numeric" placeholder="Cobrado" value="' + (d.precio_unitario || "") + '" title="Cobrado">' +
+    '<input class="it-repuestos" type="number" inputmode="numeric" placeholder="Repuesto" value="' + (d.costo_repuestos || "") + '" title="Costo de repuesto">' +
+    '<input class="it-costo" type="number" inputmode="numeric" placeholder="Gastos" value="' + (d.costo_unitario || "") + '" title="Gastos del servicio">' +
+    '<input class="it-envio" type="number" inputmode="numeric" placeholder="Envío" value="' + (d.envio || "") + '" title="Envío">' +
     '<span class="it-sub mono">$0</span>' +
     '<button type="button" class="x" data-quitar title="Quitar"><i class="ti ti-x"></i></button>';
   $("#items").appendChild(div);
@@ -286,10 +285,9 @@ function recalcularForm() {
   var debe = total - desc - abono;
 
   $("#t-total").textContent = cop(total - desc);
-  $("#t-envio").textContent = cop(envio);
   $("#t-repuestos").textContent = cop(repuestos);
-  $("#t-costo-serv").textContent = cop(costoSer);
-  $("#t-gastos").textContent = cop(gastos);
+  $("#t-gastos").textContent = cop(costoSer + gastos);
+  $("#t-envio").textContent = cop(envio);
   $("#t-descuento").textContent = cop(desc);
   $("#t-ganancia").textContent = cop(ganancia);
   $("#t-ganancia").className = ganancia < 0 ? "rojo" : "verde";
@@ -404,15 +402,15 @@ async function vistaOrden(params) {
         '<section class="box">' +
           '<div class="box-head"><h3><i class="ti ti-tools"></i> Servicios de reparación</h3>' +
             (esFinal ? "" : '<button class="btn-ghost btn-sm" id="btn-add-item"><i class="ti ti-plus"></i> Agregar servicio</button>') + "</div>" +
-          (d.items.length ? '<div class="tabla-wrap"><table class="tabla"><thead><tr><th>Servicio</th><th class="der">Cant.</th><th class="der">Precio</th><th class="der">Costo</th><th class="der">Domicilio</th><th class="der">Repuestos</th><th class="der">Subtotal</th><th></th></tr></thead><tbody>' +
+          (d.items.length ? '<div class="tabla-wrap"><table class="tabla"><thead><tr><th>Servicio</th><th class="der">Cant.</th><th class="der">Cobrado</th><th class="der">Repuesto</th><th class="der">Gastos</th><th class="der">Envío</th><th class="der">Subtotal</th><th></th></tr></thead><tbody>' +
             d.items.map(function (i) {
               var rep = i.tipo === "repuesto";
               return "<tr><td>" + esc(i.descripcion) + (rep ? ' <span class="tag">Repuesto histórico</span>' : "") + "</td>" +
                 '<td class="der mono">' + i.cantidad + "</td>" +
                 '<td class="der mono">' + cop(i.precio_unitario) + "</td>" +
+                '<td class="der mono">' + cop(rep ? i.costo_unitario : i.costo_repuestos) + "</td>" +
                 '<td class="der mono">' + (rep ? "—" : cop(i.costo_unitario)) + "</td>" +
                 '<td class="der mono">' + (rep ? "—" : cop(i.envio)) + "</td>" +
-                '<td class="der mono">' + cop(rep ? i.costo_unitario : i.costo_repuestos) + "</td>" +
                 '<td class="der mono">' + cop(Number(i.precio_unitario) * Number(i.cantidad)) + "</td>" +
                 '<td class="der">' + (esFinal ? "" : '<button class="x" data-borrar-item="' + i.id + '"><i class="ti ti-trash"></i></button>') + "</td></tr>";
             }).join("") + "</tbody></table></div>"
@@ -445,11 +443,10 @@ async function vistaOrden(params) {
 
       '<aside class="col-side">' +
         '<section class="box resumen">' +
-          '<div class="res-linea grande"><span>Total</span><b>' + cop(o.total) + "</b></div>" +
+          '<div class="res-linea grande"><span>Cobrado</span><b>' + cop(o.total) + "</b></div>" +
+          '<div class="res-linea mini"><span>Repuesto</span><b>' + cop(o.costo_repuestos) + "</b></div>" +
+          '<div class="res-linea mini"><span>Gastos</span><b>' + cop(Number(o.costo_servicios) + Number(o.gastos)) + "</b></div>" +
           '<div class="res-linea mini"><span>Envíos</span><b>' + cop(o.envio) + "</b></div>" +
-          '<div class="res-linea mini"><span>Repuestos</span><b>' + cop(o.costo_repuestos) + "</b></div>" +
-          '<div class="res-linea mini"><span>Costos de servicios</span><b>' + cop(o.costo_servicios) + "</b></div>" +
-          '<div class="res-linea mini"><span>Gastos</span><b>' + cop(o.gastos) + "</b></div>" +
           '<div class="res-linea mini"><span>Descuento</span><b>' + cop(o.descuento) + "</b></div>" +
           '<div class="sep"></div>' +
           '<div class="res-linea"><span>Ganancia</span><b class="' + (margen < 0 ? "rojo" : "verde") + '">' + cop(margen) + "</b></div>" +
@@ -570,10 +567,10 @@ function modalItem(o) {
       '<input id="it-serv" list="lista-servicios" placeholder="Buscar servicio…" required>' +
       '<div class="grid-2-in">' +
         '<div><label class="lb">Cantidad</label><input id="it-cant" type="number" min="0.5" step="0.5" value="1"></div>' +
-        '<div><label class="lb">Precio cobrado</label><input id="it-precio" type="number" inputmode="numeric" value="0"></div>' +
-        '<div><label class="lb">Costo del servicio</label><input id="it-costo" type="number" inputmode="numeric" value="0"></div>' +
-        '<div><label class="lb">Domicilio / envío</label><input id="it-envio" type="number" inputmode="numeric" value="0"></div>' +
-        '<div><label class="lb">Costo de repuestos</label><input id="it-repuestos" type="number" inputmode="numeric" value="0"></div>' +
+        '<div><label class="lb">Cobrado</label><input id="it-precio" type="number" inputmode="numeric" value="0"></div>' +
+        '<div><label class="lb">Repuesto</label><input id="it-repuestos" type="number" inputmode="numeric" value="0"></div>' +
+        '<div><label class="lb">Gastos</label><input id="it-costo" type="number" inputmode="numeric" value="0"></div>' +
+        '<div><label class="lb">Envío</label><input id="it-envio" type="number" inputmode="numeric" value="0"></div>' +
       "</div>" +
       '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
         '<button class="btn"><i class="ti ti-plus"></i> Agregar</button></div>' +

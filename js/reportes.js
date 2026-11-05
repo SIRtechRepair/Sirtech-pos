@@ -52,8 +52,9 @@ async function pintarReportes() {
     var costoRep = sum(entregadas, "costo_repuestos");
     var envios = sum(entregadas, "envio");
     var gastosOrden = sum(entregadas, "gastos");
+    var gastosTotal = costoSer + gastosOrden;
     var margen = sum(entregadas, "ganancia");
-    if (!margen && entregadas.length) margen = facturado - costoSer - costoRep - envios - gastosOrden;
+    if (!margen && entregadas.length) margen = facturado - gastosTotal - costoRep - envios;
     var cobrado = sum(pagos, "monto");
 
     var gastosNegocio = movs.filter(function (m) { return m.tipo === "gasto" || m.tipo === "proveedor"; })
@@ -91,10 +92,9 @@ async function pintarReportes() {
           "<h3>Resultado del mes</h3>" +
           '<div class="datos">' +
             filaDato("Facturado", cop(facturado)) +
-            filaDato("− Costos de servicios", cop(costoSer)) +
-            filaDato("− Repuestos", cop(costoRep)) +
+            filaDato("− Repuesto", cop(costoRep)) +
+            filaDato("− Gastos", cop(gastosTotal)) +
             filaDato("− Envíos", cop(envios)) +
-            filaDato("− Gastos de órdenes", cop(gastosOrden)) +
             filaDato("= Ganancia", cop(margen)) +
             filaDato("Ticket promedio", cop(ticket)) +
             filaDato("Gastos del negocio", cop(gastosNegocio)) +
