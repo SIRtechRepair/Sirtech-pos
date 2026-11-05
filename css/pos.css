@@ -329,6 +329,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 18px 16px 70px; }
 .fila-inline input { flex: 1; }
 .fila-inline select { width: 150px; }
 .mixto-pago { margin-top: 10px; }
+.acciones-item { display: inline-flex; gap: 4px; align-items: center; }
 .acciones-final { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 
 /* ---------- listas ---------- */

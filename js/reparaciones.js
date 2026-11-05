@@ -440,7 +440,9 @@ async function vistaOrden(params) {
                 '<td class="der mono">' + (rep ? "—" : cop(i.costo_unitario)) + "</td>" +
                 '<td class="der mono">' + (rep ? "—" : cop(i.envio)) + "</td>" +
                 '<td class="der mono">' + cop(Number(i.precio_unitario) * Number(i.cantidad)) + "</td>" +
-                '<td class="der">' + (esFinal ? "" : '<button class="x" data-borrar-item="' + i.id + '"><i class="ti ti-trash"></i></button>') + "</td></tr>";
+                '<td class="der"><span class="acciones-item">' + (esFinal ? "" :
+                  (rep ? "" : '<button class="x" data-editar-item="' + i.id + '" title="Editar"><i class="ti ti-pencil"></i></button>') +
+                  '<button class="x" data-borrar-item="' + i.id + '" title="Eliminar"><i class="ti ti-trash"></i></button>') + "</span></td></tr>";
             }).join("") + "</tbody></table></div>"
             : vacio("Sin servicios registrados.", "ti-list-details")) +
         "</section>" +
@@ -567,6 +569,13 @@ function conectarDetalle(o, d) {
   var btnEditar = $("#btn-editar");
   if (btnEditar) btnEditar.addEventListener("click", function () { modalEditar(o); });
 
+  $$("[data-editar-item]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var item = (d.items || []).find(function (i) { return String(i.id) === String(b.dataset.editarItem); });
+      if (item) modalEditarItem(o, item);
+    });
+  });
+
   $$("[data-borrar-item]").forEach(function (b) {
     b.addEventListener("click", async function () {
       if (!confirm("¿Eliminar este ítem?")) return;
@@ -588,38 +597,57 @@ function conectarDetalle(o, d) {
 
 /* ======================= MODALES ======================= */
 function modalItem(o) {
+  abrirFormItem(o, null);
+}
+
+function modalEditarItem(o, item) {
+  abrirFormItem(o, item);
+}
+
+function abrirFormItem(o, item) {
+  var editando = !!item;
   abrirModal(
-    "<h3>Agregar servicio</h3>" +
+    "<h3>" + (editando ? "Editar servicio" : "Agregar servicio") + "</h3>" +
     '<form id="form-item" class="form-modal">' +
       '<label class="lb">Servicio</label>' +
-      '<input id="it-serv" list="lista-servicios" placeholder="Buscar servicio…" required>' +
+      '<input id="it-serv" list="lista-servicios" placeholder="Buscar servicio…" value="' + esc(editando ? item.descripcion : "") + '" required>' +
       '<div class="grid-2-in">' +
-        '<div><label class="lb">Cantidad</label><input id="it-cant" type="number" min="0.5" step="0.5" value="1"></div>' +
-        '<div><label class="lb">Cobrado</label><input id="it-precio" type="number" inputmode="numeric" value="0"></div>' +
-        '<div><label class="lb">Repuesto</label><input id="it-repuestos" type="number" inputmode="numeric" value="0"></div>' +
-        '<div><label class="lb">Gastos</label><input id="it-costo" type="number" inputmode="numeric" value="0"></div>' +
-        '<div><label class="lb">Envío</label><input id="it-envio" type="number" inputmode="numeric" value="0"></div>' +
+        '<div><label class="lb">Cantidad</label><input id="it-cant" type="number" min="0.5" step="0.5" value="' + (editando ? item.cantidad : 1) + '"></div>' +
+        '<div><label class="lb">Cobrado</label><input id="it-precio" type="number" inputmode="numeric" value="' + (editando ? item.precio_unitario : 0) + '"></div>' +
+        '<div><label class="lb">Repuesto</label><input id="it-repuestos" type="number" inputmode="numeric" value="' + (editando ? (item.costo_repuestos || 0) : 0) + '"></div>' +
+        '<div><label class="lb">Gastos</label><input id="it-costo" type="number" inputmode="numeric" value="' + (editando ? item.costo_unitario : 0) + '"></div>' +
+        '<div><label class="lb">Envío</label><input id="it-envio" type="number" inputmode="numeric" value="' + (editando ? (item.envio || 0) : 0) + '"></div>' +
       "</div>" +
       '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
-        '<button class="btn"><i class="ti ti-plus"></i> Agregar</button></div>' +
+        '<button class="btn"><i class="ti ti-' + (editando ? "device-floppy" : "plus") + '"></i> ' + (editando ? "Guardar" : "Agregar") + "</button></div>" +
     "</form>"
   );
+
   $("#form-item").addEventListener("submit", async function (e) {
     e.preventDefault();
     try {
-      var s = servicioPorNombre($("#it-serv").value, await serviciosCatalogo());
-      if (!s) throw new Error("Selecciona un servicio del listado.");
-      await agregarItem(o.id, {
-        servicio_id: s.id,
-        descripcion: s.nombre,
+      var nombre = $("#it-serv").value;
+      var s = servicioPorNombre(nombre, await serviciosCatalogo());
+      if (!s && !(editando && normalizarTexto(nombre) === normalizarTexto(item.descripcion))) {
+        throw new Error("Selecciona un servicio del listado.");
+      }
+      var datos = {
+        servicio_id: s ? s.id : (editando ? item.servicio_id : null),
+        descripcion: s ? s.nombre : item.descripcion,
         cantidad: $("#it-cant").value,
         precio_unitario: $("#it-precio").value,
         costo_unitario: $("#it-costo").value,
         envio: $("#it-envio").value,
         costo_repuestos: $("#it-repuestos").value
-      });
+      };
+      if (editando) {
+        await actualizarItem(item.id, datos);
+        toast("Servicio actualizado");
+      } else {
+        await agregarItem(o.id, datos);
+        toast("Servicio agregado");
+      }
       cerrarModal();
-      toast("Servicio agregado");
       recargar();
     } catch (err) { toast(errorDe(err), "error"); }
   });

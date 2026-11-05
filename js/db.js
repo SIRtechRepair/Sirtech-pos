@@ -283,6 +283,18 @@ async function agregarItem(ordenId, item) {
   }).select().single());
 }
 
+async function actualizarItem(id, item) {
+  return db(sb.from("orden_items").update({
+    servicio_id: item.servicio_id || null,
+    descripcion: item.descripcion.trim(),
+    cantidad: num(item.cantidad) || 1,
+    costo_unitario: num(item.costo_unitario),
+    precio_unitario: num(item.precio_unitario),
+    envio: num(item.envio),
+    costo_repuestos: num(item.costo_repuestos)
+  }).eq("id", id).select().single());
+}
+
 async function eliminarItem(id) {
   return db(sb.from("orden_items").delete().eq("id", id));
 }
