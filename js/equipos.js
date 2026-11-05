@@ -197,7 +197,7 @@ function modalEditarEquipo(u) {
       "</div>" +
       '<label class="lb">Notas</label><input id="ee-notas" value="' + esc(u.notas || "") + '">' +
       '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
-        '<button class="btn"><i class="ti ti-device-floppy"></i> Guardar</button></div>' +
+        '<button type="submit" class="btn"><i class="ti ti-device-floppy"></i> Guardar</button></div>' +
     "</form>", "ancho"
   );
   $("#form-eq-edit").addEventListener("submit", async function (e) {
@@ -229,7 +229,7 @@ function modalNuevoEquipo() {
     '<form id="form-eq-nuevo" class="form-modal">' +
       '<div class="grid-2-in">' +
         '<div><label class="lb">IMEI</label><input id="en-imei" placeholder="Opcional"></div>' +
-        '<div><label class="lb">Modelo *</label><input id="en-modelo" placeholder="iPhone 13" required></div>' +
+        '<div><label class="lb">Modelo *</label><input id="en-modelo" placeholder="iPhone 13"></div>' +
         '<div><label class="lb">CPU</label><input id="en-cpu" placeholder="Opcional"></div>' +
         '<div><label class="lb">RAM</label><input id="en-ram" placeholder="4GB"></div>' +
         '<div><label class="lb">Almacenamiento</label><input id="en-almac" placeholder="128GB"></div>' +
@@ -241,7 +241,7 @@ function modalNuevoEquipo() {
       "</div>" +
       '<label class="lb">Notas</label><input id="en-notas" placeholder="Opcional">' +
       '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
-        '<button class="btn"><i class="ti ti-device-floppy"></i> Guardar</button></div>' +
+        '<button type="submit" class="btn"><i class="ti ti-device-floppy"></i> Guardar</button></div>' +
     "</form>", "ancho"
   );
   $("#form-eq-nuevo").addEventListener("submit", async function (e) {
@@ -284,42 +284,88 @@ async function modalVentaEq() {
         unidades.map(function (u) {
           return '<option value="' + u.id + '">' + esc(u.modelo) + " · " + esc(u.ram || "") + " " + esc(u.almacenamiento || "") + " · IMEI " + esc(u.imei || "—") + "</option>";
         }).join("") + "</select>" +
+      '<label class="lb">Tipo de pago</label>' +
+      '<select id="ev-tipo"><option value="contado">Contado</option><option value="cuotas">A cuotas</option></select>' +
       '<div class="grid-2-in">' +
         '<div><label class="lb">Fecha</label><input id="ev-fecha" type="date" value="' + hoyInput() + '"></div>' +
-        '<div><label class="lb">Equipo *</label><input id="ev-equipo" placeholder="iPhone 13" required></div>' +
+        '<div><label class="lb">Equipo *</label><input id="ev-equipo" placeholder="iPhone 13"></div>' +
         '<div><label class="lb">CPU</label><input id="ev-cpu"></div>' +
         '<div><label class="lb">RAM</label><input id="ev-ram"></div>' +
         '<div><label class="lb">Almacenamiento</label><input id="ev-almac"></div>' +
         '<div><label class="lb">Vendedor</label><input id="ev-vendedor"></div>' +
         '<div><label class="lb">Comprador</label><input id="ev-comprador"></div>' +
         '<div><label class="lb">Contacto</label><input id="ev-contacto"></div>' +
-        '<div><label class="lb">Total</label><input id="ev-total" type="number" value="0"></div>' +
+        '<div><label class="lb">Precio de venta de contado</label><input id="ev-total" type="number" value="0"></div>' +
         '<div><label class="lb">Costo</label><input id="ev-costo" type="number" value="0"></div>' +
         '<div><label class="lb">Comisión</label><input id="ev-comision" type="number" value="0"></div>' +
         '<div><label class="lb">Envío</label><input id="ev-envio" type="number" value="0"></div>' +
         '<div><label class="lb">Gastos</label><input id="ev-gastos" type="number" value="0"></div>' +
-        '<div><label class="lb">Inicial</label><input id="ev-inicial" type="number" value="0"></div>' +
-        '<div><label class="lb">Método inicial</label><select id="ev-metodo">' + eqMetodos("efectivo") + "</select></div>" +
-        '<div><label class="lb">Número de cuotas</label><input id="ev-ncuotas" type="number" value="0"></div>' +
-        '<div><label class="lb">Valor de cuota</label><input id="ev-vcuota" type="number" value="0"></div>' +
         '<div><label class="lb">Origen</label><select id="ev-origen"><option value="SNEIDER">Sneider</option><option value="SOCIEDAD">Sociedad</option></select></div>' +
         '<div><label class="lb">De quién es</label><input id="ev-dequien" placeholder="Opcional"></div>' +
         '<div><label class="lb">Estado del equipo</label><select id="ev-estado"><option value="vendido">Vendido</option><option value="en_reparacion">En reparación</option><option value="disponible">Disponible</option></select></div>' +
       "</div>" +
+      '<div id="ev-financiacion" class="box oculto" style="margin-top:12px;margin-bottom:0">' +
+        '<div class="grid-2-in">' +
+          '<div><label class="lb">Cuota inicial</label><input id="ev-inicial" type="number" value="0"></div>' +
+          '<div><label class="lb">Número de cuotas</label><input id="ev-ncuotas" type="number" value="0"></div>' +
+          '<div><label class="lb">Cuota mensual (calculada)</label><input id="ev-vcuota" type="number" readonly></div>' +
+        "</div>" +
+        '<div class="sep"></div>' +
+        '<div class="res-linea mini"><span>Monto a financiar</span><b id="ev-fin-monto">$0</b></div>' +
+        '<div class="res-linea mini"><span>Interés (70% anual)</span><b id="ev-fin-interes">$0</b></div>' +
+        '<div class="res-linea mini"><span>Total financiado</span><b id="ev-fin-total">$0</b></div>' +
+      "</div>" +
+      '<label class="lb">Método de pago</label><select id="ev-metodo">' + eqMetodos("efectivo") + "</select>" +
       '<label class="lb">Notas</label><input id="ev-notas" placeholder="Opcional">' +
-      '<div class="res-linea" style="margin-top:12px"><span>Ganancia estimada</span><b id="ev-ganancia">$0</b></div>' +
+      '<div class="res-linea" style="margin-top:12px"><span>Total a registrar</span><b id="ev-total-reg">$0</b></div>' +
+      '<div class="res-linea mini"><span>Ganancia estimada</span><b id="ev-ganancia">$0</b></div>' +
       '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
-        '<button class="btn"><i class="ti ti-check"></i> Registrar venta</button></div>' +
+        '<button type="submit" class="btn"><i class="ti ti-check"></i> Registrar venta</button></div>' +
     "</form>", "ancho"
   );
 
-  function recalcular() {
-    var g = num($("#ev-total").value) - num($("#ev-costo").value) - num($("#ev-comision").value) - num($("#ev-envio").value) - num($("#ev-gastos").value);
+  function financiacion() {
+    var contado = num($("#ev-total").value);
+    var inicial = num($("#ev-inicial").value);
+    var n = Math.max(0, Math.round(num($("#ev-ncuotas").value)));
+    var monto = Math.max(contado - inicial, 0);
+    var interes = monto * 0.70 * (n / 12);
+    var totalFin = monto + interes;
+    var cuota = n > 0 ? totalFin / n : 0;
+    var tipo = $("#ev-tipo").value;
+    var totalReg = tipo === "cuotas" ? totalFin : contado;
+
+    $("#ev-vcuota").value = tipo === "cuotas" ? Math.round(cuota) : 0;
+    $("#ev-fin-monto").textContent = cop(monto);
+    $("#ev-fin-interes").textContent = cop(interes);
+    $("#ev-fin-total").textContent = cop(totalFin);
+    $("#ev-total-reg").textContent = cop(totalReg);
+
+    var g = totalReg - num($("#ev-costo").value) - num($("#ev-comision").value) - num($("#ev-envio").value) - num($("#ev-gastos").value);
     $("#ev-ganancia").textContent = cop(g);
     $("#ev-ganancia").className = g < 0 ? "rojo" : "verde";
+
+    return {
+      contado: contado, inicial: inicial, n: n, monto: monto,
+      interes: interes, totalFin: totalFin, cuota: cuota, totalReg: totalReg
+    };
   }
-  $$("#ev-total, #ev-costo, #ev-comision, #ev-envio, #ev-gastos").forEach(function (el) { el.addEventListener("input", recalcular); });
-  recalcular();
+
+  function toggleFinanciacion() {
+    var cuotas = $("#ev-tipo").value === "cuotas";
+    $("#ev-financiacion").classList.toggle("oculto", !cuotas);
+    if (!cuotas) {
+      $("#ev-inicial").value = 0;
+      $("#ev-ncuotas").value = 0;
+    }
+    financiacion();
+  }
+
+  $("#ev-tipo").addEventListener("change", toggleFinanciacion);
+  $$("#ev-total, #ev-costo, #ev-comision, #ev-envio, #ev-gastos, #ev-inicial, #ev-ncuotas").forEach(function (el) {
+    el.addEventListener("input", financiacion);
+  });
+  toggleFinanciacion();
 
   $("#ev-unidad").addEventListener("change", function () {
     var sel = this.value;
@@ -333,13 +379,26 @@ async function modalVentaEq() {
     $("#ev-total").value = Number(u.precio_sugerido || 0);
     $("#ev-origen").value = u.origen || "SNEIDER";
     $("#ev-dequien").value = u.de_quien_es || "";
-    recalcular();
+    financiacion();
   });
 
   $("#form-eq-venta").addEventListener("submit", async function (e) {
     e.preventDefault();
     try {
-      var inicial = num($("#ev-inicial").value);
+      var tipo = $("#ev-tipo").value;
+      var fin = financiacion();
+      if (!fin.contado || fin.contado <= 0) throw new Error("Escribe el precio de venta de contado.");
+      if (tipo === "cuotas") {
+        if (fin.n <= 0) throw new Error("Escribe el número de cuotas.");
+        if (fin.inicial < 0 || fin.inicial >= fin.contado) throw new Error("La cuota inicial debe ser menor al precio de contado.");
+        if (fin.cuota <= 0) throw new Error("La cuota mensual debe ser mayor a 0.");
+      }
+
+      var totalReg = tipo === "cuotas" ? fin.totalFin : fin.contado;
+      var inicial = tipo === "cuotas" ? fin.inicial : fin.contado;
+      var ncuotas = tipo === "cuotas" ? fin.n : 0;
+      var vcuota = tipo === "cuotas" ? Math.round(fin.cuota) : 0;
+
       var venta = {
         fecha: $("#ev-fecha").value ? $("#ev-fecha").value + "T12:00:00" : new Date().toISOString(),
         unidad_id: $("#ev-unidad").value || null,
@@ -350,14 +409,14 @@ async function modalVentaEq() {
         vendedor: $("#ev-vendedor").value.trim(),
         comprador: $("#ev-comprador").value.trim(),
         contacto: $("#ev-contacto").value.trim(),
-        total: num($("#ev-total").value),
+        total: totalReg,
         costo: num($("#ev-costo").value),
         comision: num($("#ev-comision").value),
         envio: num($("#ev-envio").value),
         gastos: num($("#ev-gastos").value),
         inicial: inicial,
-        numero_cuotas: num($("#ev-ncuotas").value),
-        valor_cuota: num($("#ev-vcuota").value),
+        numero_cuotas: ncuotas,
+        valor_cuota: vcuota,
         origen: $("#ev-origen").value,
         de_quien_es: $("#ev-dequien").value.trim(),
         estado_equipo: $("#ev-estado").value,
@@ -365,14 +424,19 @@ async function modalVentaEq() {
       };
       if (!venta.equipo) throw new Error("Escribe el equipo.");
       if (venta.total <= 0) throw new Error("El total debe ser mayor a 0.");
+
       var pagos = inicial > 0 ? [{
         monto: inicial,
         metodo: $("#ev-metodo").value,
         tipo: "inicial",
         fecha: venta.fecha,
-        nota: "Inicial"
+        nota: tipo === "cuotas" ? "Cuota inicial" : "Contado"
       }] : [];
-      await db(sb.rpc("crear_venta_equipo", { p_venta: venta, p_pagos: pagos, p_agregados: [] }));
+
+      var ventaId = await db(sb.rpc("crear_venta_equipo", { p_venta: venta, p_pagos: pagos, p_agregados: [] }));
+      if (ventaId) {
+        await db(sb.from("equipo_ventas").update({ precio_contado: fin.contado }).eq("id", ventaId));
+      }
       cerrarModal();
       toast("Venta de equipo registrada");
       pintarEquipos();
@@ -382,6 +446,11 @@ async function modalVentaEq() {
 
 async function modalDetalleEq(v) {
   try {
+    try {
+      var fresh = await db(sb.from("v_equipo_ventas").select("*").eq("id", v.id).single());
+      if (fresh) v = fresh;
+    } catch (e) { /* usar el registro de la lista */ }
+
     var [cuotas, pagos, agregados] = await Promise.all([
       db(sb.from("equipo_cuotas").select("*").eq("venta_id", v.id).order("numero")),
       db(sb.from("equipo_pagos").select("*").eq("venta_id", v.id).order("fecha")),
@@ -402,16 +471,22 @@ async function modalDetalleEq(v) {
             '<td class="der mono">' + cop(c.monto) + "</td>" +
             '<td class="der mono">' + cop(c.pagado) + "</td>" +
             "<td>" + c.estado + "</td>" +
-            '<td class="der">' + (c.estado !== "pagada" ? '<button class="x" data-pagar-cuota="' + c.id + '" title="Pagar cuota"><i class="ti ti-cash"></i></button>' : "") + "</td></tr>";
+            '<td class="der"><span class="acciones-item">' +
+              '<button class="x" data-editar-cuota="' + c.id + '" title="Editar cuota"><i class="ti ti-pencil"></i></button>' +
+              (c.estado !== "pagada" ? '<button class="x" data-pagar-cuota="' + c.id + '" title="Pagar cuota"><i class="ti ti-cash"></i></button>' : "") +
+            "</span></td></tr>";
         }).join("") + "</tbody></table></div>" : '<p class="mini-vacio">Sin cuotas. Puedes registrar abonos generales.</p>') +
       '<div class="box-head" style="margin-top:14px"><h3>Pagos</h3></div>' +
-      (pagos.length ? '<div class="tabla-wrap"><table class="tabla"><thead><tr><th>Fecha</th><th>Tipo</th><th>Método</th><th>Nota</th><th class="der">Monto</th></tr></thead><tbody>' +
+      (pagos.length ? '<div class="tabla-wrap"><table class="tabla"><thead><tr><th>Fecha</th><th>Tipo</th><th>Método</th><th>Nota</th><th class="der">Monto</th><th></th></tr></thead><tbody>' +
         pagos.map(function (p) {
-          return "<tr><td>" + fdatetime(p.fecha) + "</td><td>" + esc(p.tipo) + "</td><td>" + badgeMetodo(p.metodo) + "</td><td>" + esc(p.nota || "—") + "</td><td class=\"der mono\">" + cop(p.monto) + "</td></tr>";
+          return "<tr><td>" + fdatetime(p.fecha) + "</td><td>" + esc(p.tipo) + "</td><td>" + badgeMetodo(p.metodo) + "</td><td>" + esc(p.nota || "—") + "</td><td class=\"der mono\">" + cop(p.monto) + "</td>" +
+            '<td class="der"><button class="x" data-borrar-pago-eq="' + p.id + '" title="Eliminar pago"><i class="ti ti-trash"></i></button></td></tr>';
         }).join("") + "</tbody></table></div>" : '<p class="mini-vacio">Sin pagos.</p>') +
       (agregados.length ? '<div class="box-head" style="margin-top:14px"><h3>Agregados</h3></div><div class="datos">' +
         agregados.map(function (a) { return filaDato(a.descripcion, cop(a.precio_unitario)); }).join("") + "</div>" : "") +
-      '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cerrar</button></div>',
+      '<div class="modal-acciones">' +
+        '<button type="button" class="btn-ghost" id="eq-editar-venta"><i class="ti ti-edit"></i> Editar venta</button>' +
+        '<button type="button" class="btn-ghost" data-cerrar>Cerrar</button></div>',
       "ancho"
     );
     var btnAb = $("#eq-abono");
@@ -422,7 +497,110 @@ async function modalDetalleEq(v) {
         if (c) modalPagoEq(v, c);
       });
     });
+    var btnEd = $("#eq-editar-venta");
+    if (btnEd) btnEd.addEventListener("click", function () { modalEditarVentaEq(v); });
+    $$("[data-editar-cuota]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var c = cuotas.find(function (x) { return String(x.id) === String(b.dataset.editarCuota); });
+        if (c) modalEditarCuotaEq(c, v);
+      });
+    });
+    $$("[data-borrar-pago-eq]").forEach(function (b) {
+      b.addEventListener("click", async function () {
+        if (!confirm("¿Eliminar este pago? El saldo se recalcula.")) return;
+        try {
+          await db(sb.from("equipo_pagos").delete().eq("id", b.dataset.borrarPagoEq));
+          toast("Pago eliminado");
+          pintarEquipos();
+          modalDetalleEq(v);
+        } catch (err) { toast(errorDe(err), "error"); }
+      });
+    });
   } catch (e) { toast(errorDe(e), "error"); }
+}
+
+function modalEditarVentaEq(v) {
+  abrirModal(
+    "<h3>Editar venta #" + v.numero + "</h3>" +
+    '<form id="form-eq-edit-venta" class="form-modal">' +
+      '<div class="grid-2-in">' +
+        '<div><label class="lb">Fecha</label><input id="ve-fecha" type="date" value="' + inputDate(v.fecha) + '"></div>' +
+        '<div><label class="lb">Equipo</label><input id="ve-equipo" value="' + esc(v.equipo) + '" required></div>' +
+        '<div><label class="lb">Comprador</label><input id="ve-comprador" value="' + esc(v.comprador || "") + '"></div>' +
+        '<div><label class="lb">Contacto</label><input id="ve-contacto" value="' + esc(v.contacto || "") + '"></div>' +
+        '<div><label class="lb">Precio contado</label><input id="ve-contado" type="number" value="' + Number(v.precio_contado || v.total || 0) + '"></div>' +
+        '<div><label class="lb">Total</label><input id="ve-total" type="number" value="' + Number(v.total || 0) + '"></div>' +
+        '<div><label class="lb">Costo</label><input id="ve-costo" type="number" value="' + Number(v.costo || 0) + '"></div>' +
+        '<div><label class="lb">Comisión</label><input id="ve-comision" type="number" value="' + Number(v.comision || 0) + '"></div>' +
+        '<div><label class="lb">Envío</label><input id="ve-envio" type="number" value="' + Number(v.envio || 0) + '"></div>' +
+        '<div><label class="lb">Gastos</label><input id="ve-gastos" type="number" value="' + Number(v.gastos || 0) + '"></div>' +
+        '<div><label class="lb">Inicial</label><input id="ve-inicial" type="number" value="' + Number(v.inicial || 0) + '"></div>' +
+        '<div><label class="lb">Número de cuotas</label><input id="ve-ncuotas" type="number" value="' + Number(v.numero_cuotas || 0) + '"></div>' +
+        '<div><label class="lb">Valor de cuota</label><input id="ve-vcuota" type="number" value="' + Number(v.valor_cuota || 0) + '"></div>' +
+        '<div><label class="lb">Origen</label><select id="ve-origen"><option value="SNEIDER"' + (v.origen === "SNEIDER" ? " selected" : "") + '>Sneider</option><option value="SOCIEDAD"' + (v.origen === "SOCIEDAD" ? " selected" : "") + '>Sociedad</option></select></div>' +
+        '<div><label class="lb">De quién es</label><input id="ve-dequien" value="' + esc(v.de_quien_es || "") + '"></div>' +
+        '<div><label class="lb">Estado del equipo</label><select id="ve-estado">' +
+          ["vendido", "en_reparacion", "disponible", "garantia", "devuelto"].map(function (x) {
+            return '<option value="' + x + '"' + (v.estado_equipo === x ? " selected" : "") + ">" + x + "</option>";
+          }).join("") + "</select></div>" +
+      "</div>" +
+      '<label class="lb">Notas</label><input id="ve-notas" value="' + esc(v.notas || "") + '">' +
+      '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
+        '<button type="submit" class="btn"><i class="ti ti-device-floppy"></i> Guardar</button></div>' +
+    "</form>", "ancho"
+  );
+  $("#form-eq-edit-venta").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      await db(sb.from("equipo_ventas").update({
+        fecha: $("#ve-fecha").value ? $("#ve-fecha").value + "T12:00:00" : v.fecha,
+        equipo: $("#ve-equipo").value.trim(),
+        comprador: $("#ve-comprador").value.trim() || null,
+        contacto: $("#ve-contacto").value.trim() || null,
+        precio_contado: num($("#ve-contado").value),
+        total: num($("#ve-total").value),
+        costo: num($("#ve-costo").value),
+        comision: num($("#ve-comision").value),
+        envio: num($("#ve-envio").value),
+        gastos: num($("#ve-gastos").value),
+        inicial: num($("#ve-inicial").value),
+        numero_cuotas: num($("#ve-ncuotas").value),
+        valor_cuota: num($("#ve-vcuota").value),
+        origen: $("#ve-origen").value,
+        de_quien_es: $("#ve-dequien").value.trim() || null,
+        estado_equipo: $("#ve-estado").value,
+        notas: $("#ve-notas").value.trim() || null
+      }).eq("id", v.id));
+      toast("Venta actualizada");
+      pintarEquipos();
+      modalDetalleEq(v);
+    } catch (err) { toast(errorDe(err), "error"); }
+  });
+}
+
+function modalEditarCuotaEq(c, v) {
+  abrirModal(
+    "<h3>Editar cuota " + c.numero + "</h3>" +
+    '<form id="form-cuota-edit" class="form-modal">' +
+      '<div class="grid-2-in">' +
+        '<div><label class="lb">Vencimiento</label><input id="ce-fecha" type="date" value="' + inputDate(c.fecha_vencimiento) + '"></div>' +
+        '<div><label class="lb">Monto</label><input id="ce-monto" type="number" value="' + Number(c.monto) + '" required></div>' +
+      "</div>" +
+      '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
+        '<button type="submit" class="btn"><i class="ti ti-device-floppy"></i> Guardar</button></div>' +
+    "</form>"
+  );
+  $("#form-cuota-edit").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      await db(sb.from("equipo_cuotas").update({
+        fecha_vencimiento: $("#ce-fecha").value || null,
+        monto: num($("#ce-monto").value)
+      }).eq("id", c.id));
+      toast("Cuota actualizada");
+      modalDetalleEq(v);
+    } catch (err) { toast(errorDe(err), "error"); }
+  });
 }
 
 function modalPagoEq(v, cuota) {
@@ -438,7 +616,7 @@ function modalPagoEq(v, cuota) {
         '<div><label class="lb">Nota</label><input id="pe-nota" placeholder="Opcional"></div>' +
       "</div>" +
       '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
-        '<button class="btn"><i class="ti ti-check"></i> Registrar pago</button></div>' +
+        '<button type="submit" class="btn"><i class="ti ti-check"></i> Registrar pago</button></div>' +
     "</form>"
   );
   $("#form-pago-eq").addEventListener("submit", async function (e) {

@@ -118,6 +118,8 @@ function filasInventarioAcc(prods) {
       '<td class="der mono">' + p.stock_minimo + "</td>" +
       '<td class="der"><span class="acciones-item">' +
         '<button class="x" data-ingreso="' + p.id + '" title="Ingreso"><i class="ti ti-truck-delivery"></i></button>' +
+        '<button class="x" data-lotes="' + p.id + '" title="Lotes"><i class="ti ti-list-details"></i></button>' +
+        '<button class="x" data-ajustar="' + p.id + '" title="Ajustar stock"><i class="ti ti-adjustments"></i></button>' +
         '<button class="x" data-editar-prod="' + p.id + '" title="Editar"><i class="ti ti-pencil"></i></button>' +
       "</span></td></tr>";
   }).join("");
@@ -144,6 +146,114 @@ function conectarInventarioAcc() {
       if (p) modalEditarProducto(p);
     });
   });
+  $$("[data-lotes]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var p = (_accStock || []).find(function (x) { return String(x.id) === String(b.dataset.lotes); });
+      if (p) modalLotesAcc(p);
+    });
+  });
+  $$("[data-ajustar]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var p = (_accStock || []).find(function (x) { return String(x.id) === String(b.dataset.ajustar); });
+      if (p) modalAjusteStock(p);
+    });
+  });
+}
+
+async function modalLotesAcc(p) {
+  try {
+    var lotes = await db(sb.from("producto_lotes").select("*").eq("producto_id", p.id).order("fecha").order("id"));
+    abrirModal(
+      "<h3>Lotes · " + esc(p.nombre) + "</h3>" +
+      '<p class="modal-sub">Stock actual: ' + p.stock + ' · Costo promedio: ' + cop(p.costo_promedio) + "</p>" +
+      (lotes.length ? '<div class="tabla-wrap"><table class="tabla"><thead><tr><th>Fecha</th><th class="der">Inicial</th><th class="der">Restante</th><th class="der">Costo</th><th>Proveedor</th><th></th></tr></thead><tbody>' +
+        lotes.map(function (l) {
+          return "<tr><td>" + fdate(l.fecha) + "</td>" +
+            '<td class="der mono">' + l.cantidad_inicial + "</td>" +
+            '<td class="der mono">' + l.cantidad_restante + "</td>" +
+            '<td class="der mono">' + cop(l.costo_unitario) + "</td>" +
+            "<td>" + esc(l.proveedor || "—") + "</td>" +
+            '<td class="der"><button class="x" data-editar-lote="' + l.id + '" title="Corregir lote"><i class="ti ti-pencil"></i></button></td></tr>';
+        }).join("") + "</tbody></table></div>" : '<p class="mini-vacio">Sin lotes.</p>') +
+      '<div class="modal-acciones">' +
+        '<button type="button" class="btn-ghost" id="lote-ajustar"><i class="ti ti-adjustments"></i> Ajustar stock</button>' +
+        '<button type="button" class="btn-ghost" data-cerrar>Cerrar</button></div>',
+      "ancho"
+    );
+    $("#lote-ajustar").addEventListener("click", function () { modalAjusteStock(p); });
+    $$("[data-editar-lote]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var l = lotes.find(function (x) { return String(x.id) === String(b.dataset.editarLote); });
+        if (l) modalEditarLote(l, p);
+      });
+    });
+  } catch (e) { toast(errorDe(e), "error"); }
+}
+
+function modalEditarLote(l, p) {
+  abrirModal(
+    "<h3>Corregir lote</h3>" +
+    '<p class="modal-sub">' + esc(p.nombre) + "</p>" +
+    '<form id="form-lote" class="form-modal">' +
+      '<div class="grid-2-in">' +
+        '<div><label class="lb">Fecha</label><input id="lo-fecha" type="date" value="' + inputDate(l.fecha) + '"></div>' +
+        '<div><label class="lb">Cantidad inicial</label><input id="lo-inicial" type="number" value="' + Number(l.cantidad_inicial) + '" required></div>' +
+        '<div><label class="lb">Cantidad restante</label><input id="lo-restante" type="number" value="' + Number(l.cantidad_restante) + '" required></div>' +
+        '<div><label class="lb">Costo unitario</label><input id="lo-costo" type="number" value="' + Number(l.costo_unitario) + '" required></div>' +
+        '<div><label class="lb">Proveedor</label><input id="lo-proveedor" value="' + esc(l.proveedor || "") + '"></div>' +
+      "</div>" +
+      '<label class="lb">Nota</label><input id="lo-nota" value="' + esc(l.nota || "") + '">' +
+      '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
+        '<button type="submit" class="btn"><i class="ti ti-device-floppy"></i> Guardar corrección</button></div>' +
+    "</form>"
+  );
+  $("#form-lote").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      await db(sb.rpc("actualizar_lote", {
+        p_lote_id: l.id,
+        p_cantidad_inicial: num($("#lo-inicial").value),
+        p_cantidad_restante: num($("#lo-restante").value),
+        p_costo_unitario: num($("#lo-costo").value),
+        p_fecha: $("#lo-fecha").value || null,
+        p_proveedor: $("#lo-proveedor").value.trim(),
+        p_nota: $("#lo-nota").value.trim()
+      }));
+      toast("Lote corregido");
+      await pintarAccesorios();
+      var fresh = (_accStock || []).find(function (x) { return String(x.id) === String(p.id); }) || p;
+      modalLotesAcc(fresh);
+    } catch (err) { toast(errorDe(err), "error"); }
+  });
+}
+
+function modalAjusteStock(p) {
+  abrirModal(
+    "<h3>Ajustar stock</h3>" +
+    '<p class="modal-sub">' + esc(p.nombre) + " · Stock actual: " + p.stock + "</p>" +
+    '<form id="form-ajuste" class="form-modal">' +
+      '<div class="grid-2-in">' +
+        '<div><label class="lb">Nuevo stock</label><input id="aj-stock" type="number" value="' + Number(p.stock) + '" required></div>' +
+        '<div><label class="lb">Costo para el ajuste</label><input id="aj-costo" type="number" value="' + Number(p.costo_promedio || 0) + '"></div>' +
+      "</div>" +
+      '<p class="mini">Si el stock sube, se crea un lote de ajuste. Si baja, se consumen los lotes más antiguos.</p>' +
+      '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
+        '<button type="submit" class="btn"><i class="ti ti-check"></i> Ajustar</button></div>' +
+    "</form>"
+  );
+  $("#form-ajuste").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      await db(sb.rpc("ajustar_stock", {
+        p_producto_id: p.id,
+        p_nuevo_stock: num($("#aj-stock").value),
+        p_costo_unitario: num($("#aj-costo").value)
+      }));
+      cerrarModal();
+      toast("Stock ajustado");
+      pintarAccesorios();
+    } catch (err) { toast(errorDe(err), "error"); }
+  });
 }
 
 async function modalIngresoAcc(producto) {
@@ -163,7 +273,7 @@ async function modalIngresoAcc(producto) {
       "</div>" +
       '<label class="lb">Nota</label><input id="ing-nota" placeholder="Opcional">' +
       '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
-        '<button class="btn"><i class="ti ti-device-floppy"></i> Guardar ingreso</button></div>' +
+        '<button type="submit" class="btn"><i class="ti ti-device-floppy"></i> Guardar ingreso</button></div>' +
     "</form>"
   );
   if (!esNuevo) {
@@ -207,7 +317,7 @@ function modalEditarProducto(p) {
         '<div><label class="lb">Estado</label><select id="pr-activo"><option value="true"' + (p.activo ? " selected" : "") + '>Activo</option><option value="false"' + (!p.activo ? " selected" : "") + '>Inactivo</option></select></div>' +
       "</div>" +
       '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
-        '<button class="btn"><i class="ti ti-device-floppy"></i> Guardar</button></div>' +
+        '<button type="submit" class="btn"><i class="ti ti-device-floppy"></i> Guardar</button></div>' +
     "</form>"
   );
   $("#form-prod").addEventListener("submit", async function (e) {
@@ -280,15 +390,16 @@ function modalVentaAcc() {
       '<div class="grid-3-in">' +
         '<div><label class="lb">Descuento</label><input id="va-desc" type="number" value="0"></div>' +
         '<div><label class="lb">Envío</label><input id="va-envio" type="number" value="0"></div>' +
-        '<div><label class="lb">Gastos</label><input id="va-gastos" type="number" value="0"></div>' +
+        '<div><label class="lb">Costos (FIFO)</label><input id="va-gastos" type="number" value="0" readonly title="Se calcula automáticamente con los lotes más antiguos"></div>' +
       "</div>" +
       '<div class="grid-2-in">' +
         '<div><label class="lb">Abono inicial</label><input id="va-abono" type="number" value="0"></div>' +
         '<div><label class="lb">Método</label><select id="va-metodo">' + accMetodos("efectivo") + "</select></div>" +
       "</div>" +
       '<div class="res-linea" style="margin-top:12px"><span>Total</span><b id="va-total">$0</b></div>' +
+      '<div class="res-linea mini"><span>Ganancia estimada</span><b id="va-ganancia">$0</b></div>' +
       '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
-        '<button class="btn"><i class="ti ti-check"></i> Registrar venta</button></div>' +
+        '<button type="submit" class="btn"><i class="ti ti-check"></i> Registrar venta</button></div>' +
     "</form>", "ancho"
   );
   $("#va-add").addEventListener("click", function () { vaFila(); });
@@ -323,7 +434,7 @@ function modalVentaAcc() {
         cliente_nombre: $("#va-cliente").value.trim(),
         descuento: num($("#va-desc").value),
         envio: num($("#va-envio").value),
-        gastos: num($("#va-gastos").value),
+        gastos: 0,
         notas: ""
       };
       var pagos = abono > 0 ? [{
@@ -351,7 +462,7 @@ function vaFila(producto) {
   var div = document.createElement("div");
   div.className = "fila-acc";
   div.innerHTML =
-    '<input class="va-prod" list="acc-prod-dl" placeholder="Producto…" value="' + esc(p ? p.nombre : "") + '" required>' +
+    '<input class="va-prod" list="acc-prod-dl" placeholder="Producto…" value="' + esc(p ? p.nombre : "") + '">' +
     '<input class="va-cant" type="number" min="0.5" step="0.5" value="1" title="Cantidad">' +
     '<input class="va-precio" type="number" inputmode="numeric" value="' + (p ? Number(p.precio || 0) : 0) + '" title="Precio">' +
     '<span class="it-sub mono">$0</span>' +
@@ -365,6 +476,8 @@ function vaFila(producto) {
   vaRecalcular();
 }
 
+let _vaCostoTimer = null;
+
 function vaRecalcular() {
   if (!$("#va-items")) return;
   var total = 0;
@@ -375,7 +488,41 @@ function vaRecalcular() {
     $(".it-sub", f).textContent = cop(c * p);
   });
   var desc = num($("#va-desc").value);
+  var costo = num($("#va-gastos").value);
+  var envio = num($("#va-envio").value);
+  var gan = total - desc - costo - envio;
   $("#va-total").textContent = cop(total - desc);
+  $("#va-ganancia").textContent = cop(gan);
+  $("#va-ganancia").className = gan < 0 ? "rojo" : "verde";
+
+  clearTimeout(_vaCostoTimer);
+  _vaCostoTimer = setTimeout(vaCostoFifo, 250);
+}
+
+async function vaCostoFifo() {
+  if (!$("#va-items") || !$("#va-gastos")) return;
+  var total = 0;
+  var filas = $$("#va-items .fila-acc");
+  for (var i = 0; i < filas.length; i++) {
+    var f = filas[i];
+    var prod = accProductoPorNombre($(".va-prod", f).value);
+    var cant = num($(".va-cant", f).value) || 1;
+    if (!prod) continue;
+    try {
+      var costo = await db(sb.rpc("costo_fifo", { p_producto_id: prod.id, p_cantidad: cant }));
+      total += Number(costo || 0);
+    } catch (e) { /* si no hay stock, se muestra el costo disponible */ }
+  }
+  if (!$("#va-gastos")) return;
+  $("#va-gastos").value = Math.round(total);
+
+  var venta = 0;
+  filas.forEach(function (f) {
+    venta += (num($(".va-cant", f).value) || 1) * num($(".va-precio", f).value);
+  });
+  var gan = venta - num($("#va-desc").value) - total - num($("#va-envio").value);
+  $("#va-ganancia").textContent = cop(gan);
+  $("#va-ganancia").className = gan < 0 ? "rojo" : "verde";
 }
 
 async function modalDetalleVentaAcc(v) {
@@ -433,7 +580,7 @@ function modalAbonoAcc(v, saldo) {
         '<div><label class="lb">Nota</label><input id="aa-nota" placeholder="Opcional"></div>' +
       "</div>" +
       '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
-        '<button class="btn"><i class="ti ti-check"></i> Registrar</button></div>' +
+        '<button type="submit" class="btn"><i class="ti ti-check"></i> Registrar</button></div>' +
     "</form>"
   );
   $("#form-abono-acc").addEventListener("submit", async function (e) {
@@ -484,7 +631,7 @@ function modalGarantiaAcc() {
     "<h3>Registrar garantía</h3>" +
     '<form id="form-garantia" class="form-modal">' +
       '<div class="grid-2-in">' +
-        '<div><label class="lb">Producto defectuoso</label><input id="ga-prod" list="acc-prod-dl" placeholder="Buscar producto…" required></div>' +
+        '<div><label class="lb">Producto defectuoso</label><input id="ga-prod" list="acc-prod-dl" placeholder="Buscar producto…"></div>' +
         '<div><label class="lb">Cantidad</label><input id="ga-cant" type="number" value="1" required></div>' +
         '<div><label class="lb">Origen</label><select id="ga-origen"><option value="post_venta">Falla post-venta</option><option value="tienda">Defectuoso en tienda</option></select></div>' +
         '<div><label class="lb">Venta # (opcional)</label><input id="ga-venta" type="number" placeholder="Opcional"></div>' +
@@ -494,7 +641,7 @@ function modalGarantiaAcc() {
       '<label class="lb">Motivo</label><input id="ga-motivo" placeholder="Falla, defecto de fábrica…">' +
       '<label class="lb">Notas</label><input id="ga-notas" placeholder="Opcional">' +
       '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
-        '<button class="btn"><i class="ti ti-check"></i> Registrar</button></div>' +
+        '<button type="submit" class="btn"><i class="ti ti-check"></i> Registrar</button></div>' +
     "</form>"
   );
   $("#form-garantia").addEventListener("submit", async function (e) {

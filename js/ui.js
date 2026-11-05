@@ -142,6 +142,14 @@ document.addEventListener("keydown", function (e) {
   if (e.key === "Escape") cerrarModal();
 });
 
+let _ultimoAvisoInvalido = 0;
+document.addEventListener("invalid", function (e) {
+  if (!e.target || !e.target.closest || !e.target.closest("form")) return;
+  if (Date.now() - _ultimoAvisoInvalido < 800) return;
+  _ultimoAvisoInvalido = Date.now();
+  toast("Completa los campos obligatorios.", "error");
+}, true);
+
 /* ---------- piezas reutilizables ---------- */
 function badgeEstado(k) {
   var e = estadoInfo(k);

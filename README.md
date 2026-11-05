@@ -56,6 +56,7 @@ Después de lo anterior, ejecuta en orden:
 | 12 | `sql/12_seed_productos.sql` | Catálogo inicial de 180 accesorios |
 | 13 | `sql/13_import_accesorios.sql` | Histórico de ventas de accesorios |
 | 14 | `sql/14_import_equipos.sql` | Histórico de ventas e inventario de equipos |
+| 15 | `sql/15_ajustes_ventas.sql` | Precio de contado, costo FIFO, corrección de lotes y ajuste de stock |
 
 Cada archivo abre y cierra su propia transacción: si algo falla, no deja datos a medias.
 
@@ -204,10 +205,17 @@ insert into public.servicios (nombre) values ('NOMBRE DEL SERVICIO');
 
 ### Equipos
 - Inventario por IMEI (disponible, en reparación, consignación, vendido).
-- Ventas con inicial, número de cuotas y valor de cuota.
+- Ventas de **contado** o **a cuotas**.
+- A cuotas: precio de contado, cuota inicial y número de cuotas.
+- Interés del **70% anual** proporcional al plazo: 6 meses = 35% sobre el monto financiado.
 - Generación automática de cuotas y registro de pagos con fecha y método.
 - Pestañas **Sneider**, **Sociedad** y **Todos** con la misma lógica.
 - El saldo y el estado de pago se calculan solos.
+- Cualquier venta o cuota se puede corregir; los pagos se pueden eliminar y el saldo se recalcula.
+
+### Correcciones de inventario
+- En accesorios se puede corregir un lote ya ingresado (cantidad, costo, fecha o proveedor).
+- También se puede ajustar el stock actual: si sube se crea un lote de ajuste; si baja se consumen los lotes más antiguos.
 
 ### Pendiente (siguiente fase)
 
