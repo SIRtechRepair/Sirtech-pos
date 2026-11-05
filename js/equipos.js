@@ -21,9 +21,11 @@ function sumarMeses(fecha, meses) {
 
 function eqTelefono(v) {
   var raw = String(v.contacto || "").replace(/\D/g, "");
+  if (raw.length === 12 && raw.slice(0, 2) === "57") return raw;
   if (raw.length >= 10 && raw.length <= 11) return "57" + raw.slice(-10);
   var tel = String(v.cliente_telefono || "").replace(/\D/g, "");
-  if (tel.length >= 10) return "57" + tel.slice(-10);
+  if (tel.length === 12 && tel.slice(0, 2) === "57") return tel;
+  if (tel.length >= 10 && tel.length <= 11) return "57" + tel.slice(-10);
   return "";
 }
 
