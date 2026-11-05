@@ -84,7 +84,7 @@ function htmlInventarioAcc() {
   var prods = _accStock || [];
   var unidades = prods.reduce(function (s, p) { return s + Number(p.stock || 0); }, 0);
   var valor = prods.reduce(function (s, p) { return s + Number(p.stock || 0) * Number(p.costo_promedio || 0); }, 0);
-  var bajos = prods.filter(function (p) { return Number(p.stock) <= Number(p.stock_minimo || 0); }).length;
+  var bajos = prods.filter(function (p) { return Number(p.stock_minimo || 0) > 0 && Number(p.stock) <= Number(p.stock_minimo); }).length;
 
   return '<div class="kpis">' +
       kpi("Productos", prods.length, "ti-box") +
@@ -109,7 +109,7 @@ function htmlInventarioAcc() {
 function filasInventarioAcc(prods) {
   if (!prods.length) return '<tr><td colspan="7">' + vacio("Sin productos. Registra un ingreso.", "ti-box") + "</td></tr>";
   return prods.map(function (p) {
-    var bajo = Number(p.stock) <= Number(p.stock_minimo || 0);
+    var bajo = Number(p.stock_minimo || 0) > 0 && Number(p.stock) <= Number(p.stock_minimo);
     return "<tr><td><b>" + esc(p.nombre) + "</b>" + (p.activo ? "" : ' <span class="tag">Inactivo</span>') + "</td>" +
       "<td>" + esc(p.categoria || "General") + "</td>" +
       '<td class="der mono ' + (bajo ? "rojo" : "") + '">' + p.stock + "</td>" +
