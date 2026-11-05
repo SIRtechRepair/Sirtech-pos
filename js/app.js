@@ -66,6 +66,7 @@ async function iniciar() {
     mostrarLogin();
   });
   $("#btn-nueva").addEventListener("click", function () { navegar("#/nueva"); });
+  $("#btn-cuenta").addEventListener("click", modalCuenta);
 
   window.addEventListener("hashchange", router);
 
@@ -240,4 +241,35 @@ function fechaLarga() {
   return new Date().toLocaleDateString("es-CO", {
     weekday: "long", day: "numeric", month: "long", year: "numeric"
   });
+}
+
+/* ======================= MI CUENTA ======================= */
+async function modalCuenta() {
+  var s = await sesionActual();
+  var correo = s ? s.user.email : "";
+  abrirModal(
+    "<h3>Mi cuenta</h3>" +
+    '<p class="modal-sub">' + esc(correo) + "</p>" +
+    '<form id="form-cuenta" class="form-modal">' +
+      '<label class="lb">Nueva contraseña</label>' +
+      '<input id="ct-pass" type="password" autocomplete="new-password" minlength="8" placeholder="Mínimo 8 caracteres" required>' +
+      '<label class="lb">Repetir contraseña</label>' +
+      '<input id="ct-pass2" type="password" autocomplete="new-password" minlength="8" required>' +
+      '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
+        '<button class="btn"><i class="ti ti-check"></i> Cambiar</button></div>' +
+    "</form>"
+  );
+  $("#form-cuenta").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    var p1 = $("#ct-pass").value, p2 = $("#ct-pass2").value;
+    if (p1 !== p2) { toast("Las contraseñas no coinciden", "error"); return; }
+    if (p1.length < 8) { toast("Usa al menos 8 caracteres", "error"); return; }
+    try {
+      var res = await sb.auth.updateUser({ password: p1 });
+      if (res.error) throw res.error;
+      cerrarModal();
+      toast("Contraseña actualizada");
+    } catch (err) { toast(errorDe(err), "error"); }
+  });
+  setTimeout(function () { $("#ct-pass").focus(); }, 50);
 }
