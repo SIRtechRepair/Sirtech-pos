@@ -153,7 +153,10 @@ async function vistaNueva() {
 
       '<section class="box box-servicios">' +
         '<div class="box-head"><h3><i class="ti ti-tools"></i> Servicios de reparación</h3>' +
-          '<button type="button" class="btn-ghost" id="btn-add-item"><i class="ti ti-plus"></i> Agregar servicio</button></div>' +
+          '<div class="acciones-head">' +
+            '<button type="button" class="btn-ghost" id="btn-nuevo-servicio"><i class="ti ti-plus"></i> Nuevo servicio</button>' +
+            '<button type="button" class="btn-ghost" id="btn-add-item"><i class="ti ti-plus"></i> Agregar servicio</button>' +
+          "</div></div>" +
         '<div class="servicios-grid">' +
           '<div class="servicios-lista">' +
             '<div id="items"></div>' +
@@ -228,6 +231,11 @@ async function vistaNueva() {
     recalcularForm();
   });
   $("#btn-add-item").addEventListener("click", function () { agregarFilaItem(); });
+  $("#btn-nuevo-servicio").addEventListener("click", function () {
+    modalNuevoServicio(function (servicio) {
+      agregarFilaItem({ descripcion: servicio.nombre });
+    });
+  });
   $("#items").addEventListener("click", function (e) {
     var b = e.target.closest("[data-quitar]");
     if (b) {
@@ -250,7 +258,7 @@ function agregarFilaItem(datos) {
     '<input class="it-cant" type="number" min="0.5" step="0.5" value="' + (d.cantidad || 1) + '" title="Cantidad">' +
     '<input class="it-precio" type="number" inputmode="numeric" placeholder="Cobrado" value="' + (d.precio_unitario || "") + '" title="Cobrado">' +
     '<input class="it-repuestos" type="number" inputmode="numeric" placeholder="Repuesto" value="' + (d.costo_repuestos || "") + '" title="Costo de repuesto">' +
-    '<input class="it-costo" type="number" inputmode="numeric" placeholder="Gastos" value="' + (d.costo_unitario || "") + '" title="Gastos del servicio">' +
+    '<input class="it-costo" type="number" inputmode="numeric" placeholder="Gastos total" value="' + (d.costo_unitario || "") + '" title="Gastos totales del trabajo (no se multiplican por la cantidad)">' +
     '<input class="it-envio" type="number" inputmode="numeric" placeholder="Envío" value="' + (d.envio || "") + '" title="Envío">' +
     '<span class="it-sub mono">$0</span>' +
     '<button type="button" class="x" data-quitar title="Quitar"><i class="ti ti-x"></i></button>';
@@ -286,13 +294,44 @@ function abonoInicial() {
   return num($("#o-abono") ? $("#o-abono").value : 0);
 }
 
+function modalNuevoServicio(callback) {
+  abrirModal(
+    "<h3>Nuevo servicio</h3>" +
+    '<form id="form-servicio" class="form-modal">' +
+      '<label class="lb">Nombre del servicio</label>' +
+      '<input id="ns-nombre" placeholder="Ej. Mantenimiento lógico" required>' +
+      '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
+        '<button type="submit" class="btn"><i class="ti ti-device-floppy"></i> Crear servicio</button></div>' +
+    "</form>"
+  );
+  $("#form-servicio").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      var nombre = $("#ns-nombre").value.trim();
+      if (!nombre) throw new Error("Escribe el nombre del servicio.");
+      var lista = await serviciosCatalogo();
+      var existente = servicioPorNombre(nombre, lista);
+      var servicio = existente;
+      if (!existente) {
+        servicio = await db(sb.from("servicios").insert({ nombre: nombre }).select().single());
+      }
+      await serviciosCatalogo(true);
+      montarDatalist(_serviciosCache);
+      cerrarModal();
+      toast(existente ? "Ese servicio ya existía" : "Servicio creado");
+      if (callback) callback(servicio);
+    } catch (err) { toast(errorDe(err), "error"); }
+  });
+  setTimeout(function () { $("#ns-nombre").focus(); }, 50);
+}
+
 function recalcularForm() {
   if (!$("#items")) return;
   var items = leerItems();
   var total = items.reduce(function (s, i) { return s + i.precio_unitario * i.cantidad; }, 0);
   var envio = items.reduce(function (s, i) { return s + i.envio; }, 0);
   var repuestos = items.reduce(function (s, i) { return s + i.costo_repuestos; }, 0);
-  var costoSer = items.reduce(function (s, i) { return s + i.costo_unitario * i.cantidad; }, 0);
+  var costoSer = items.reduce(function (s, i) { return s + i.costo_unitario; }, 0);
   var desc = num($("#o-descuento") ? $("#o-descuento").value : 0);
   var abono = abonoInicial();
 
@@ -402,6 +441,7 @@ async function vistaOrden(params) {
       '<div class="acciones-head">' +
         (c.telefono ? '<a class="btn-ghost" target="_blank" rel="noopener" href="' + waLink(c.telefono, mensajeWhatsApp(o)) + '"><i class="ti ti-brand-whatsapp"></i><span class="solo-pc"> WhatsApp</span></a>' : "") +
         '<button class="btn-ghost" id="btn-editar"><i class="ti ti-edit"></i><span class="solo-pc"> Editar</span></button>' +
+        '<button class="btn-ghost" id="btn-borrar-orden" title="Eliminar orden"><i class="ti ti-trash"></i><span class="solo-pc"> Eliminar</span></button>' +
       "</div>" +
     "</div>" +
 
@@ -569,6 +609,18 @@ function conectarDetalle(o, d) {
   var btnEditar = $("#btn-editar");
   if (btnEditar) btnEditar.addEventListener("click", function () { modalEditar(o); });
 
+  var btnBorrarOrden = $("#btn-borrar-orden");
+  if (btnBorrarOrden) btnBorrarOrden.addEventListener("click", async function () {
+    var num = String(o.numero).padStart(4, "0");
+    if (!confirm("¿Eliminar definitivamente la orden #" + num + "?\nSe borrarán sus servicios, abonos e historial.")) return;
+    if (!confirm("Esta acción no se puede deshacer. ¿Continuar?")) return;
+    try {
+      await eliminarOrden(o.id);
+      toast("Orden eliminada");
+      navegar("#/ordenes");
+    } catch (err) { toast(errorDe(err), "error"); }
+  });
+
   $$("[data-editar-item]").forEach(function (b) {
     b.addEventListener("click", function () {
       var item = (d.items || []).find(function (i) { return String(i.id) === String(b.dataset.editarItem); });
@@ -604,18 +656,21 @@ function modalEditarItem(o, item) {
   abrirFormItem(o, item);
 }
 
-function abrirFormItem(o, item) {
+function abrirFormItem(o, item, prefill) {
   var editando = !!item;
   abrirModal(
     "<h3>" + (editando ? "Editar servicio" : "Agregar servicio") + "</h3>" +
     '<form id="form-item" class="form-modal">' +
       '<label class="lb">Servicio</label>' +
-      '<input id="it-serv" list="lista-servicios" placeholder="Buscar servicio…" value="' + esc(editando ? item.descripcion : "") + '" required>' +
+      '<div class="fila-inline">' +
+        '<input id="it-serv" list="lista-servicios" placeholder="Buscar servicio…" value="' + esc(prefill || (editando ? item.descripcion : "")) + '">' +
+        '<button type="button" class="btn-ghost" id="it-nuevo-serv" title="Crear servicio nuevo"><i class="ti ti-plus"></i></button>' +
+      "</div>" +
       '<div class="grid-2-in">' +
         '<div><label class="lb">Cantidad</label><input id="it-cant" type="number" min="0.5" step="0.5" value="' + (editando ? item.cantidad : 1) + '"></div>' +
         '<div><label class="lb">Cobrado</label><input id="it-precio" type="number" inputmode="numeric" value="' + (editando ? item.precio_unitario : 0) + '"></div>' +
         '<div><label class="lb">Repuesto</label><input id="it-repuestos" type="number" inputmode="numeric" value="' + (editando ? (item.costo_repuestos || 0) : 0) + '"></div>' +
-        '<div><label class="lb">Gastos</label><input id="it-costo" type="number" inputmode="numeric" value="' + (editando ? item.costo_unitario : 0) + '"></div>' +
+        '<div><label class="lb">Gastos totales</label><input id="it-costo" type="number" inputmode="numeric" value="' + (editando ? item.costo_unitario : 0) + '" title="No se multiplica por la cantidad"></div>' +
         '<div><label class="lb">Envío</label><input id="it-envio" type="number" inputmode="numeric" value="' + (editando ? (item.envio || 0) : 0) + '"></div>' +
       "</div>" +
       '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
@@ -651,6 +706,13 @@ function abrirFormItem(o, item) {
       recargar();
     } catch (err) { toast(errorDe(err), "error"); }
   });
+
+  $("#it-nuevo-serv").addEventListener("click", function () {
+    modalNuevoServicio(function (servicio) {
+      abrirFormItem(o, item, servicio.nombre);
+    });
+  });
+
   setTimeout(function () { $("#it-serv").focus(); }, 50);
 }
 

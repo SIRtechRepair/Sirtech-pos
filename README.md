@@ -58,6 +58,7 @@ Después de lo anterior, ejecuta en orden:
 | 14 | `sql/14_import_equipos.sql` | Histórico de ventas e inventario de equipos |
 | 15 | `sql/15_ajustes_ventas.sql` | Precio de contado, costo FIFO, corrección de lotes y ajuste de stock |
 | 16 | `sql/16_mora_whatsapp.sql` | Primer pago, mora automática y contacto para WhatsApp |
+| 17 | `sql/17_costos_servicios_cuotas.sql` | Gastos de reparación sin multiplicar y conteo de cuotas |
 
 Cada archivo abre y cierra su propia transacción: si algo falla, no deja datos a medias.
 
@@ -221,6 +222,17 @@ insert into public.servicios (nombre) values ('NOMBRE DEL SERVICIO');
 ### Correcciones de inventario
 - En accesorios se puede corregir un lote ya ingresado (cantidad, costo, fecha o proveedor).
 - También se puede ajustar el stock actual: si sube se crea un lote de ajuste; si baja se consumen los lotes más antiguos.
+
+### Reparaciones
+- El campo **Gastos** de cada línea es el total del trabajo: no se multiplica por la cantidad.
+- Botón **Nuevo servicio** para crear servicios que no estén en el catálogo.
+- Las órdenes se pueden **eliminar definitivamente** (con doble confirmación).
+
+### Cuotas históricas
+- En cualquier venta de equipo se pueden **agregar cuotas** ya pagadas o pendientes.
+- Cada cuota se puede editar o eliminar.
+- El número de cuotas de la venta se actualiza solo.
+- Los pagos de cuotas eliminadas quedan como abonos generales.
 
 ### Pendiente (siguiente fase)
 

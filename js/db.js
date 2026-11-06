@@ -268,6 +268,10 @@ async function cambiarEstado(id, estado) {
   return db(sb.from("ordenes").update({ estado: estado }).eq("id", id).select().single());
 }
 
+async function eliminarOrden(id) {
+  return db(sb.from("ordenes").delete().eq("id", id));
+}
+
 /* ---------------- ÍTEMS ---------------- */
 async function agregarItem(ordenId, item) {
   return db(sb.from("orden_items").insert({
