@@ -524,7 +524,8 @@ grant execute on function public.registrar_garantia_accesorio(jsonb) to authenti
 -- ------------------------------------------------------------
 -- 8. Vistas
 -- ------------------------------------------------------------
-create or replace view public.v_accesorio_stock
+drop view if exists public.v_accesorio_stock;
+create view public.v_accesorio_stock
 with (security_invoker = true) as
 select p.id,
        p.nombre,
@@ -544,7 +545,8 @@ select p.id,
     on l.producto_id = p.id and l.cantidad_restante > 0
  group by p.id;
 
-create or replace view public.v_accesorio_ventas
+drop view if exists public.v_accesorio_ventas;
+create view public.v_accesorio_ventas
 with (security_invoker = true) as
 select v.*,
        case when v.saldo > 0.5 then 'por_pagar' else 'pagada' end as estado_pago

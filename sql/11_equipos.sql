@@ -389,12 +389,22 @@ grant execute on function public.registrar_pago_equipo(bigint, bigint, numeric, 
 -- ------------------------------------------------------------
 -- Vistas
 -- ------------------------------------------------------------
-create or replace view public.v_equipo_ventas
-with (security_invoker = true) as
-select v.*,
-       case when v.saldo > 0.5 then 'por_pagar' else 'pagada' end as estado_pago_calc,
-       (select count(*) from public.equipo_cuotas c where c.venta_id = v.id and c.estado <> 'pagada') as cuotas_pendientes
-  from public.equipo_ventas v;
+-- Crear solo si no existe. Así se puede volver a ejecutar el 11 sin quitar
+-- las columnas que agregan las migraciones 15 y 16.
+do $$
+begin
+  if to_regclass('public.v_equipo_ventas') is null then
+    execute $view$
+      create view public.v_equipo_ventas
+      with (security_invoker = true) as
+      select v.*,
+             case when v.saldo > 0.5 then 'por_pagar' else 'pagada' end as estado_pago_calc,
+             (select count(*) from public.equipo_cuotas c
+               where c.venta_id = v.id and c.estado <> 'pagada') as cuotas_pendientes
+        from public.equipo_ventas v
+    $view$;
+  end if;
+end $$;
 
 -- ------------------------------------------------------------
 -- Seguridad
