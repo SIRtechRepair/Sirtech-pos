@@ -61,6 +61,7 @@ Después de lo anterior, ejecuta en orden:
 | 17 | `sql/17_costos_servicios_cuotas.sql` | Gastos de reparación sin multiplicar y conteo de cuotas |
 | 18 | `sql/18_eliminar_editar_ventas.sql` | Editar/eliminar ventas de accesorios y restaurar stock |
 | 19 | `sql/19_dia_limite_mora.sql` | Día límite, mora correcta y abonos aplicados a cuotas |
+| 20 | `sql/20_financiamiento_automatico.sql` | Cuotas automáticas desde la fecha de la cuota 1 |
 
 Cada archivo abre y cierra su propia transacción: si algo falla, no deja datos a medias.
 
@@ -210,9 +211,11 @@ insert into public.servicios (nombre) values ('NOMBRE DEL SERVICIO');
 ### Equipos
 - Inventario por IMEI (disponible, en reparación, consignación, vendido).
 - Ventas de **contado** o **a cuotas**.
-- A cuotas: precio de contado, cuota inicial, número de cuotas, **mes del primer pago** y **día límite**.
+- A cuotas: precio de contado, cuota inicial, número de cuotas y **fecha límite de la cuota 1**.
 - Interés del **70% anual** proporcional al plazo: 6 meses = 35% sobre el monto financiado.
 - El interés se suma al total cobrado y a la ganancia.
+- **Cuotas automáticas**: al elegir la fecha de la cuota 1, se generan las demás un mes después y se muestra la vista previa.
+- El saldo financiado con intereses se reparte en cuotas iguales; la última ajusta la diferencia de redondeo.
 - Generación automática de cuotas y registro de pagos con fecha y método.
 - Pestañas **Sneider**, **Sociedad** y **Todos** con la misma lógica.
 - Filtros por estado: pagada, por pagar, en mora, en reparación, garantía y disponible.

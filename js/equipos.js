@@ -28,6 +28,17 @@ function fechaConDia(mes, dia) {
   return y + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
 }
 
+function sumarMesFecha(fechaISO, meses) {
+  var p = String(fechaISO).split("-");
+  var y = Number(p[0]);
+  var m = Number(p[1]);
+  var d = Number(p[2]);
+  var target = new Date(y, m - 1 + meses, 1);
+  var ultimo = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  var dia = Math.min(d, ultimo);
+  return target.getFullYear() + "-" + String(target.getMonth() + 1).padStart(2, "0") + "-" + String(dia).padStart(2, "0");
+}
+
 function eqTelefono(v) {
   var raw = String(v.contacto || "").replace(/\D/g, "");
   if (raw.length === 12 && raw.slice(0, 2) === "57") return raw;
@@ -444,14 +455,14 @@ async function modalVentaEq() {
         '<div class="grid-2-in">' +
           '<div><label class="lb">Cuota inicial</label><input id="ev-inicial" type="number" value="0"></div>' +
           '<div><label class="lb">Número de cuotas</label><input id="ev-ncuotas" type="number" value="0"></div>' +
-          '<div><label class="lb">Mes del primer pago</label><input id="ev-primer-pago" type="month" value="' + mesSiguiente() + '"></div>' +
-          '<div><label class="lb">Día límite de pago</label><input id="ev-dia-limite" type="number" min="1" max="31" value="5"></div>' +
+          '<div><label class="lb">Fecha límite cuota 1</label><input id="ev-primer-pago" type="date" value="' + fechaConDia(mesSiguiente(), 5) + '"></div>' +
           '<div><label class="lb">Cuota mensual (calculada)</label><input id="ev-vcuota" type="number" readonly></div>' +
         "</div>" +
         '<div class="sep"></div>' +
         '<div class="res-linea mini"><span>Monto a financiar</span><b id="ev-fin-monto">$0</b></div>' +
         '<div class="res-linea mini"><span>Interés (70% anual)</span><b id="ev-fin-interes">$0</b></div>' +
         '<div class="res-linea mini"><span>Total a cobrar con interés</span><b id="ev-fin-total">$0</b></div>' +
+        '<div id="ev-cuotas-preview" class="tabla-wrap" style="margin-top:10px"></div>' +
       "</div>" +
       '<label class="lb">Método de pago</label><select id="ev-metodo">' + eqMetodos("efectivo") + "</select>" +
       '<label class="lb">Notas</label><input id="ev-notas" placeholder="Opcional">' +
@@ -463,18 +474,19 @@ async function modalVentaEq() {
   );
 
   function financiacion() {
-    var contado = num($("#ev-total").value);
-    var inicial = num($("#ev-inicial").value);
+    var contado = Math.round(num($("#ev-total").value));
+    var inicial = Math.round(num($("#ev-inicial").value));
     var n = Math.max(0, Math.round(num($("#ev-ncuotas").value)));
     var monto = Math.max(contado - inicial, 0);
-    var interes = monto * 0.70 * (n / 12);
+    var interes = Math.round(monto * 0.70 * (n / 12));
     var totalCobrar = contado + interes;
-    var saldoFin = monto + interes;
-    var cuota = n > 0 ? saldoFin / n : 0;
+    var saldoFin = Math.max(totalCobrar - inicial, 0);
+    var base = n > 0 ? Math.round(saldoFin / n) : 0;
     var tipo = $("#ev-tipo").value;
     var totalReg = tipo === "cuotas" ? totalCobrar : contado;
+    var fecha1 = $("#ev-primer-pago") ? $("#ev-primer-pago").value : "";
 
-    $("#ev-vcuota").value = tipo === "cuotas" ? Math.round(cuota) : 0;
+    $("#ev-vcuota").value = tipo === "cuotas" ? base : 0;
     $("#ev-fin-monto").textContent = cop(monto);
     $("#ev-fin-interes").textContent = cop(interes);
     $("#ev-fin-total").textContent = cop(totalCobrar);
@@ -484,10 +496,27 @@ async function modalVentaEq() {
     $("#ev-ganancia").textContent = cop(g);
     $("#ev-ganancia").className = g < 0 ? "rojo" : "verde";
 
+    var prev = $("#ev-cuotas-preview");
+    if (prev) {
+      if (tipo === "cuotas" && n > 0 && fecha1) {
+        var acum = 0;
+        var html = '<table class="tabla"><thead><tr><th>Cuota</th><th>Vence</th><th class="der">Monto</th></tr></thead><tbody>';
+        for (var i = 1; i <= n; i++) {
+          var montoCuota = i === n ? saldoFin - acum : base;
+          acum += montoCuota;
+          html += "<tr><td>" + i + "</td><td>" + fdate(sumarMesFecha(fecha1, i - 1)) + '</td><td class="der mono">' + cop(montoCuota) + "</td></tr>";
+        }
+        html += "</tbody></table>";
+        prev.innerHTML = html;
+      } else {
+        prev.innerHTML = '<p class="mini-vacio">Completa los datos para ver las cuotas.</p>';
+      }
+    }
+
     return {
       contado: contado, inicial: inicial, n: n, monto: monto,
       interes: interes, totalCobrar: totalCobrar, saldoFin: saldoFin,
-      cuota: cuota, totalReg: totalReg
+      base: base, totalReg: totalReg, fecha1: fecha1
     };
   }
 
@@ -502,7 +531,7 @@ async function modalVentaEq() {
   }
 
   $("#ev-tipo").addEventListener("change", toggleFinanciacion);
-  $$("#ev-total, #ev-costo, #ev-comision, #ev-envio, #ev-gastos, #ev-inicial, #ev-ncuotas").forEach(function (el) {
+  $$("#ev-total, #ev-costo, #ev-comision, #ev-envio, #ev-gastos, #ev-inicial, #ev-ncuotas, #ev-primer-pago").forEach(function (el) {
     el.addEventListener("input", financiacion);
   });
   toggleFinanciacion();
@@ -530,17 +559,17 @@ async function modalVentaEq() {
       if (!fin.contado || fin.contado <= 0) throw new Error("Escribe el precio de venta de contado.");
       if (tipo === "cuotas") {
         if (fin.n <= 0) throw new Error("Escribe el número de cuotas.");
+        if (!fin.fecha1) throw new Error("Escribe la fecha límite de la cuota 1.");
         if (fin.inicial < 0 || fin.inicial >= fin.contado) throw new Error("La cuota inicial debe ser menor al precio de contado.");
-        if (fin.cuota <= 0) throw new Error("La cuota mensual debe ser mayor a 0.");
+        if (fin.base <= 0) throw new Error("La cuota mensual debe ser mayor a 0.");
       }
 
-      var totalReg = tipo === "cuotas" ? fin.totalCobrar : fin.contado;
+      var totalReg = fin.totalReg;
       var inicial = tipo === "cuotas" ? fin.inicial : fin.contado;
       var ncuotas = tipo === "cuotas" ? fin.n : 0;
-      var vcuota = tipo === "cuotas" ? Math.round(fin.cuota) : 0;
-      var primerMes = $("#ev-primer-pago") && $("#ev-primer-pago").value ? $("#ev-primer-pago").value : mesSiguiente();
-      var diaLimite = Math.min(31, Math.max(1, Math.round(num($("#ev-dia-limite").value) || 5)));
-      var primerPago = fechaConDia(primerMes, diaLimite);
+      var vcuota = tipo === "cuotas" ? fin.base : 0;
+      var primerPago = tipo === "cuotas" ? fin.fecha1 : null;
+      var diaLimite = primerPago ? Number(primerPago.slice(8, 10)) : 5;
 
       var venta = {
         fecha: $("#ev-fecha").value ? $("#ev-fecha").value + "T12:00:00" : new Date().toISOString(),
@@ -553,6 +582,7 @@ async function modalVentaEq() {
         comprador: $("#ev-comprador").value.trim(),
         contacto: $("#ev-contacto").value.trim(),
         total: totalReg,
+        precio_contado: fin.contado,
         costo: num($("#ev-costo").value),
         comision: num($("#ev-comision").value),
         envio: num($("#ev-envio").value),
@@ -560,6 +590,8 @@ async function modalVentaEq() {
         inicial: inicial,
         numero_cuotas: ncuotas,
         valor_cuota: vcuota,
+        primer_pago: primerPago,
+        dia_limite: diaLimite,
         origen: $("#ev-origen").value,
         de_quien_es: $("#ev-dequien").value.trim(),
         estado_equipo: $("#ev-estado").value,
@@ -577,20 +609,6 @@ async function modalVentaEq() {
       }] : [];
 
       var ventaId = await db(sb.rpc("crear_venta_equipo", { p_venta: venta, p_pagos: pagos, p_agregados: [] }));
-      if (ventaId) {
-        var cambios = { precio_contado: fin.contado, dia_limite: diaLimite };
-        if (tipo === "cuotas") cambios.primer_pago = primerPago;
-        await db(sb.from("equipo_ventas").update(cambios).eq("id", ventaId));
-
-        if (tipo === "cuotas") {
-          var cuotas = await db(sb.from("equipo_cuotas").select("id,numero").eq("venta_id", ventaId).order("numero"));
-          for (var i = 0; i < cuotas.length; i++) {
-            await db(sb.from("equipo_cuotas")
-              .update({ fecha_vencimiento: fechaConDia(sumarMeses(primerPago, i).slice(0, 7), diaLimite) })
-              .eq("id", cuotas[i].id));
-          }
-        }
-      }
       cerrarModal();
       toast("Venta de equipo registrada");
       pintarEquipos();
