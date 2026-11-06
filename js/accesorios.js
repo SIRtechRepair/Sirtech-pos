@@ -121,6 +121,7 @@ function filasInventarioAcc(prods) {
         '<button class="x" data-lotes="' + p.id + '" title="Lotes"><i class="ti ti-list-details"></i></button>' +
         '<button class="x" data-ajustar="' + p.id + '" title="Ajustar stock"><i class="ti ti-adjustments"></i></button>' +
         '<button class="x" data-editar-prod="' + p.id + '" title="Editar"><i class="ti ti-pencil"></i></button>' +
+        '<button class="x" data-borrar-prod="' + p.id + '" title="Eliminar producto"><i class="ti ti-trash"></i></button>' +
       "</span></td></tr>";
   }).join("");
 }
@@ -156,6 +157,20 @@ function conectarInventarioAcc() {
     b.addEventListener("click", function () {
       var p = (_accStock || []).find(function (x) { return String(x.id) === String(b.dataset.ajustar); });
       if (p) modalAjusteStock(p);
+    });
+  });
+  $$("[data-borrar-prod]").forEach(function (b) {
+    b.addEventListener("click", async function () {
+      var p = (_accStock || []).find(function (x) { return String(x.id) === String(b.dataset.borrarProd); });
+      if (!p) return;
+      if (!confirm("¿Eliminar el producto " + p.nombre + "?\nSe eliminarán sus lotes. Las ventas históricas se conservan.")) return;
+      try {
+        await db(sb.from("productos").delete().eq("id", p.id));
+        toast("Producto eliminado");
+        pintarAccesorios();
+      } catch (err) {
+        toast("No se pudo eliminar: tiene garantías asociadas. Puedes desactivarlo.", "error");
+      }
     });
   });
 }
@@ -360,7 +375,11 @@ function htmlVentasAcc() {
             '<td class="der mono">' + cop(v.pagado) + "</td>" +
             '<td class="der mono ' + (Number(v.saldo) > 0.5 ? "rojo" : "verde") + '">' + cop(v.saldo) + "</td>" +
             "<td>" + (Number(v.saldo) > 0.5 ? '<span class="tag">Por pagar</span>' : '<span class="tag tag-serv">Pagada</span>') + "</td>" +
-            '<td class="der"><button class="x" data-ver-acc="' + v.id + '" title="Ver"><i class="ti ti-eye"></i></button></td></tr>';
+            '<td class="der"><span class="acciones-item">' +
+              '<button class="x" data-ver-acc="' + v.id + '" title="Ver"><i class="ti ti-eye"></i></button>' +
+              '<button class="x" data-editar-venta-acc="' + v.id + '" title="Editar"><i class="ti ti-pencil"></i></button>' +
+              '<button class="x" data-borrar-venta-acc="' + v.id + '" title="Eliminar"><i class="ti ti-trash"></i></button>' +
+            "</span></td></tr>";
         }).join("") : '<tr><td colspan="9">' + vacio("Sin ventas registradas.", "ti-receipt") + "</td></tr>") +
       "</tbody></table></div></div>" + accDatalist();
 }
@@ -371,6 +390,18 @@ function conectarVentasAcc() {
     b.addEventListener("click", function () {
       var v = (_accVentas || []).find(function (x) { return String(x.id) === String(b.dataset.verAcc); });
       if (v) modalDetalleVentaAcc(v);
+    });
+  });
+  $$("[data-editar-venta-acc]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var v = (_accVentas || []).find(function (x) { return String(x.id) === String(b.dataset.editarVentaAcc); });
+      if (v) modalEditarVentaAcc(v);
+    });
+  });
+  $$("[data-borrar-venta-acc]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var v = (_accVentas || []).find(function (x) { return String(x.id) === String(b.dataset.borrarVentaAcc); });
+      if (v) eliminarVentaAcc(v);
     });
   });
 }
@@ -527,6 +558,11 @@ async function vaCostoFifo() {
 
 async function modalDetalleVentaAcc(v) {
   try {
+    try {
+      var fresh = await db(sb.from("accesorio_ventas").select("*").eq("id", v.id).single());
+      if (fresh) v = fresh;
+    } catch (e) { /* usar el registro de la lista */ }
+
     var [items, pagos] = await Promise.all([
       db(sb.from("accesorio_venta_items").select("*").eq("venta_id", v.id).order("id")),
       db(sb.from("accesorio_pagos").select("*").eq("venta_id", v.id).order("fecha"))
@@ -552,11 +588,18 @@ async function modalDetalleVentaAcc(v) {
           return "<tr><td>" + fdatetime(p.fecha) + "</td><td>" + badgeMetodo(p.metodo) + "</td><td>" + esc(p.nota || "—") + "</td><td class=\"der mono\">" + cop(p.monto) + "</td>" +
             '<td class="der"><button class="x" data-borrar-pago-acc="' + p.id + '"><i class="ti ti-trash"></i></button></td></tr>';
         }).join("") + "</tbody></table></div>" : '<p class="mini-vacio">Sin abonos.</p>') +
-      '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cerrar</button></div>',
+      '<div class="modal-acciones">' +
+        '<button type="button" class="btn-ghost" id="acc-editar-venta"><i class="ti ti-edit"></i> Editar</button>' +
+        '<button type="button" class="btn-ghost" id="acc-borrar-venta"><i class="ti ti-trash"></i> Eliminar</button>' +
+        '<button type="button" class="btn-ghost" data-cerrar>Cerrar</button></div>',
       "ancho"
     );
     var btn = $("#acc-abonar");
     if (btn) btn.addEventListener("click", function () { modalAbonoAcc(v, saldo); });
+    var btnEdV = $("#acc-editar-venta");
+    if (btnEdV) btnEdV.addEventListener("click", function () { modalEditarVentaAcc(v); });
+    var btnDelV = $("#acc-borrar-venta");
+    if (btnDelV) btnDelV.addEventListener("click", function () { eliminarVentaAcc(v); });
     $$("[data-borrar-pago-acc]").forEach(function (b) {
       b.addEventListener("click", async function () {
         if (!confirm("¿Eliminar este abono?")) return;
@@ -567,6 +610,51 @@ async function modalDetalleVentaAcc(v) {
       });
     });
   } catch (e) { toast(errorDe(e), "error"); }
+}
+
+function modalEditarVentaAcc(v) {
+  abrirModal(
+    "<h3>Editar venta #" + v.numero + "</h3>" +
+    '<form id="form-edit-venta-acc" class="form-modal">' +
+      '<div class="grid-2-in">' +
+        '<div><label class="lb">Fecha</label><input id="eva-fecha" type="date" value="' + inputDate(v.fecha) + '"></div>' +
+        '<div><label class="lb">Cliente</label><input id="eva-cliente" value="' + esc(v.cliente_nombre || "") + '"></div>' +
+        '<div><label class="lb">Descuento</label><input id="eva-desc" type="number" value="' + Number(v.descuento || 0) + '"></div>' +
+        '<div><label class="lb">Envío</label><input id="eva-envio" type="number" value="' + Number(v.envio || 0) + '"></div>' +
+        '<div><label class="lb">Otros gastos</label><input id="eva-gastos" type="number" value="' + Number(v.gastos || 0) + '"></div>' +
+      "</div>" +
+      '<label class="lb">Notas</label><input id="eva-notas" value="' + esc(v.notas || "") + '">' +
+      '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
+        '<button type="submit" class="btn"><i class="ti ti-device-floppy"></i> Guardar</button></div>' +
+    "</form>"
+  );
+  $("#form-edit-venta-acc").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      await db(sb.from("accesorio_ventas").update({
+        fecha: $("#eva-fecha").value ? $("#eva-fecha").value + "T12:00:00" : v.fecha,
+        cliente_nombre: $("#eva-cliente").value.trim() || null,
+        descuento: num($("#eva-desc").value),
+        envio: num($("#eva-envio").value),
+        gastos: num($("#eva-gastos").value),
+        notas: $("#eva-notas").value.trim() || null
+      }).eq("id", v.id));
+      toast("Venta actualizada");
+      await pintarAccesorios();
+      modalDetalleVentaAcc(v);
+    } catch (err) { toast(errorDe(err), "error"); }
+  });
+}
+
+async function eliminarVentaAcc(v) {
+  if (!confirm("¿Eliminar definitivamente la venta #" + v.numero + "?")) return;
+  if (!confirm("Se devolverá al stock lo que consumió. Esta acción no se puede deshacer. ¿Continuar?")) return;
+  try {
+    await db(sb.rpc("eliminar_venta_accesorio", { p_venta_id: v.id }));
+    toast("Venta eliminada y stock restaurado");
+    cerrarModal();
+    pintarAccesorios();
+  } catch (err) { toast(errorDe(err), "error"); }
 }
 
 function modalAbonoAcc(v, saldo) {
@@ -609,19 +697,30 @@ function htmlGarantiasAcc() {
       '<div class="box-head"><h3><i class="ti ti-shield-check"></i> Garantías</h3>' +
         '<button class="btn btn-sm" id="acc-garantia"><i class="ti ti-plus"></i> Registrar garantía</button></div>' +
       '<div class="tabla-wrap"><table class="tabla"><thead><tr><th>Fecha</th><th>Producto</th><th class="der">Cant.</th>' +
-        '<th>Origen</th><th>Reemplazo</th><th class="der">Costo</th><th>Estado</th></tr></thead><tbody>' +
+        '<th>Origen</th><th>Reemplazo</th><th class="der">Costo</th><th>Estado</th><th></th></tr></thead><tbody>' +
         (gs.length ? gs.map(function (g) {
           return "<tr><td>" + fdate(g.fecha) + "</td><td>" + esc(prod[g.producto_id] || "—") + "</td>" +
             '<td class="der mono">' + g.cantidad + "</td><td>" + (g.origen === "tienda" ? "Tienda" : "Post-venta") + "</td>" +
             "<td>" + esc(prod[g.producto_reemplazo_id] || "—") + "</td>" +
             '<td class="der mono">' + cop(Number(g.costo_defectuoso) + Number(g.costo_reemplazo)) + "</td>" +
-            "<td>" + esc(g.estado) + "</td></tr>";
-        }).join("") : '<tr><td colspan="7">' + vacio("Sin garantías registradas.", "ti-shield-check") + "</td></tr>") +
+            "<td>" + esc(g.estado) + "</td>" +
+            '<td class="der"><button class="x" data-borrar-garantia="' + g.id + '" title="Eliminar"><i class="ti ti-trash"></i></button></td></tr>';
+        }).join("") : '<tr><td colspan="8">' + vacio("Sin garantías registradas.", "ti-shield-check") + "</td></tr>") +
       "</tbody></table></div></div>" + accDatalist();
 }
 
 function conectarGarantiasAcc() {
   $("#acc-garantia").addEventListener("click", modalGarantiaAcc);
+  $$("[data-borrar-garantia]").forEach(function (b) {
+    b.addEventListener("click", async function () {
+      if (!confirm("¿Eliminar esta garantía? No se restaura automáticamente el stock; si fue un error, ajusta el inventario.")) return;
+      try {
+        await db(sb.from("accesorio_garantias").delete().eq("id", b.dataset.borrarGarantia));
+        toast("Garantía eliminada");
+        pintarAccesorios();
+      } catch (err) { toast(errorDe(err), "error"); }
+    });
+  });
 }
 
 function modalGarantiaAcc() {

@@ -125,6 +125,10 @@ async function crearCliente(datos) {
   return rows;
 }
 
+async function eliminarCliente(id) {
+  return db(sb.from("clientes").delete().eq("id", id));
+}
+
 async function actualizarCliente(id, datos) {
   const tel = (datos.telefono || "").trim();
   const fila = {

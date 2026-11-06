@@ -59,6 +59,7 @@ Después de lo anterior, ejecuta en orden:
 | 15 | `sql/15_ajustes_ventas.sql` | Precio de contado, costo FIFO, corrección de lotes y ajuste de stock |
 | 16 | `sql/16_mora_whatsapp.sql` | Primer pago, mora automática y contacto para WhatsApp |
 | 17 | `sql/17_costos_servicios_cuotas.sql` | Gastos de reparación sin multiplicar y conteo de cuotas |
+| 18 | `sql/18_eliminar_editar_ventas.sql` | Editar/eliminar ventas de accesorios y restaurar stock |
 
 Cada archivo abre y cierra su propia transacción: si algo falla, no deja datos a medias.
 
@@ -233,6 +234,14 @@ insert into public.servicios (nombre) values ('NOMBRE DEL SERVICIO');
 - Cada cuota se puede editar o eliminar.
 - El número de cuotas de la venta se actualiza solo.
 - Los pagos de cuotas eliminadas quedan como abonos generales.
+
+### Edición y eliminación general
+- Ventas de accesorios: editar cabecera o **eliminar** la venta; al eliminarla se devuelve al stock lo que había consumido.
+- Ventas de equipos: editar o **eliminar** la venta desde Ventas o Créditos.
+- Equipos del inventario: editar o eliminar.
+- Productos de accesorios: editar o eliminar (si no tienen garantías).
+- Garantías: eliminar el registro.
+- Clientes: editar o eliminar si no tienen órdenes registradas.
 
 ### Pendiente (siguiente fase)
 

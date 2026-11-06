@@ -177,7 +177,10 @@ function htmlVentasEq(ventas) {
             '<td class="der mono">' + cop(v.pagado) + "</td>" +
             '<td class="der mono ' + (Number(v.saldo) > 0.5 ? "rojo" : "verde") + '">' + cop(v.saldo) + "</td>" +
             "<td>" + eqBadgePago(v) + (v.en_mora ? ' <span class="tag tag-mora">Mora ' + v.dias_mora + "d</span>" : "") + "</td><td>" + esc(v.origen) + "</td>" +
-            '<td class="der"><button class="x" data-ver-eq="' + v.id + '" title="Ver"><i class="ti ti-eye"></i></button></td></tr>';
+            '<td class="der"><span class="acciones-item">' +
+              '<button class="x" data-ver-eq="' + v.id + '" title="Ver"><i class="ti ti-eye"></i></button>' +
+              '<button class="x" data-borrar-eq="' + v.id + '" title="Eliminar venta"><i class="ti ti-trash"></i></button>' +
+            "</span></td></tr>";
         }).join("") : '<tr><td colspan="10">' + vacio("Sin ventas registradas.", "ti-receipt") + "</td></tr>") +
       "</tbody></table></div></div>";
 }
@@ -207,6 +210,7 @@ function htmlCreditosEq(ventas) {
             '<td class="der"><span class="acciones-item">' +
               (v.en_mora ? '<button class="x" data-wa-eq="' + v.id + '" title="WhatsApp"><i class="ti ti-brand-whatsapp"></i></button>' : "") +
               '<button class="x" data-ver-eq="' + v.id + '" title="Ver"><i class="ti ti-eye"></i></button>' +
+              '<button class="x" data-borrar-eq="' + v.id + '" title="Eliminar venta"><i class="ti ti-trash"></i></button>' +
             "</span></td></tr>";
         }).join("") : '<tr><td colspan="10">' + vacio("Sin créditos pendientes.", "ti-circle-check") + "</td></tr>") +
       "</tbody></table></div></div>";
@@ -227,6 +231,26 @@ function conectarVentasEq(ventas) {
       if (v) eqWhatsApp(v);
     });
   });
+  $$("[data-borrar-eq]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var v = ventas.find(function (x) { return String(x.id) === String(b.dataset.borrarEq); });
+      if (v) eliminarVentaEq(v);
+    });
+  });
+}
+
+async function eliminarVentaEq(v) {
+  if (!confirm("¿Eliminar definitivamente la venta #" + v.numero + " de " + v.equipo + "?")) return;
+  if (!confirm("Se borrarán cuotas y pagos. Si el equipo estaba en inventario, volverá a disponible. ¿Continuar?")) return;
+  try {
+    if (v.unidad_id) {
+      await db(sb.from("equipos_unidades").update({ estado: "disponible" }).eq("id", v.unidad_id));
+    }
+    await db(sb.from("equipo_ventas").delete().eq("id", v.id));
+    toast("Venta eliminada");
+    cerrarModal();
+    pintarEquipos();
+  } catch (err) { toast(errorDe(err), "error"); }
 }
 
 /* ---------------- Inventario ---------------- */
@@ -250,7 +274,10 @@ function htmlInvEq(unidades) {
             '<td class="der mono">' + cop(u.costo) + "</td>" +
             '<td class="der mono">' + cop(u.precio_sugerido) + "</td>" +
             "<td>" + esc(u.estado) + "</td><td>" + esc(u.origen) + "</td><td>" + esc(u.de_quien_es || "—") + "</td>" +
-            '<td class="der"><button class="x" data-editar-eq="' + u.id + '" title="Editar"><i class="ti ti-pencil"></i></button></td></tr>';
+            '<td class="der"><span class="acciones-item">' +
+              '<button class="x" data-editar-eq="' + u.id + '" title="Editar"><i class="ti ti-pencil"></i></button>' +
+              '<button class="x" data-borrar-unidad="' + u.id + '" title="Eliminar equipo"><i class="ti ti-trash"></i></button>' +
+            "</span></td></tr>";
         }).join("") : '<tr><td colspan="10">' + vacio("Sin equipos en inventario.", "ti-device-mobile") + "</td></tr>") +
       "</tbody></table></div></div>";
 }
@@ -261,6 +288,18 @@ function conectarInvEq(unidades) {
     b.addEventListener("click", function () {
       var u = (unidades || []).find(function (x) { return String(x.id) === String(b.dataset.editarEq); });
       if (u) modalEditarEquipo(u);
+    });
+  });
+  $$("[data-borrar-unidad]").forEach(function (b) {
+    b.addEventListener("click", async function () {
+      var u = (unidades || []).find(function (x) { return String(x.id) === String(b.dataset.borrarUnidad); });
+      if (!u) return;
+      if (!confirm("¿Eliminar el equipo " + u.modelo + " del inventario?")) return;
+      try {
+        await db(sb.from("equipos_unidades").delete().eq("id", u.id));
+        toast("Equipo eliminado");
+        pintarEquipos();
+      } catch (err) { toast(errorDe(err), "error"); }
     });
   });
 }
@@ -597,6 +636,7 @@ async function modalDetalleEq(v) {
         agregados.map(function (a) { return filaDato(a.descripcion, cop(a.precio_unitario)); }).join("") + "</div>" : "") +
       '<div class="modal-acciones">' +
         '<button type="button" class="btn-ghost" id="eq-editar-venta"><i class="ti ti-edit"></i> Editar venta</button>' +
+        '<button type="button" class="btn-ghost" id="eq-borrar-venta"><i class="ti ti-trash"></i> Eliminar venta</button>' +
         '<button type="button" class="btn-ghost" data-cerrar>Cerrar</button></div>',
       "ancho"
     );
@@ -625,6 +665,8 @@ async function modalDetalleEq(v) {
     if (btnEd) btnEd.addEventListener("click", function () { modalEditarVentaEq(v); });
     var btnWa = $("#eq-wa");
     if (btnWa) btnWa.addEventListener("click", function () { eqWhatsApp(v); });
+    var btnDelVenta = $("#eq-borrar-venta");
+    if (btnDelVenta) btnDelVenta.addEventListener("click", function () { eliminarVentaEq(v); });
     $$("[data-editar-cuota]").forEach(function (b) {
       b.addEventListener("click", function () {
         var c = cuotas.find(function (x) { return String(x.id) === String(b.dataset.editarCuota); });

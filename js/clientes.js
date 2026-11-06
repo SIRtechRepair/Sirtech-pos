@@ -78,6 +78,7 @@ async function vistaCliente(params) {
         '<div class="acciones-head">' +
           (cliente.telefono ? '<a class="btn-ghost" target="_blank" rel="noopener" href="' + waLink(cliente.telefono, "Hola " + cliente.nombre + ", te escribimos de SIR·TECH.") + '"><i class="ti ti-brand-whatsapp"></i><span class="solo-pc"> WhatsApp</span></a>' : "") +
           '<button class="btn-ghost" id="btn-edit-cliente"><i class="ti ti-edit"></i><span class="solo-pc"> Editar</span></button>' +
+          '<button class="btn-ghost" id="btn-del-cliente" title="Eliminar cliente"><i class="ti ti-trash"></i><span class="solo-pc"> Eliminar</span></button>' +
           '<button class="btn" data-hash="#/nueva"><i class="ti ti-plus"></i> Orden</button>' +
         "</div>" +
       "</div>" +
@@ -107,6 +108,18 @@ async function vistaCliente(params) {
       (cliente.notas ? '<section class="box"><h3>Notas</h3><p class="texto">' + esc(cliente.notas) + "</p></section>" : "");
 
     $("#btn-edit-cliente").addEventListener("click", function () { modalCliente(cliente); });
+    $("#btn-del-cliente").addEventListener("click", async function () {
+      if (ordenes.length) {
+        toast("No se puede eliminar: tiene órdenes registradas.", "error");
+        return;
+      }
+      if (!confirm("¿Eliminar el cliente " + cliente.nombre + "?\nEsta acción no se puede deshacer.")) return;
+      try {
+        await eliminarCliente(cliente.id);
+        toast("Cliente eliminado");
+        navegar("#/clientes");
+      } catch (e) { toast(errorDe(e), "error"); }
+    });
   } catch (e) {
     v.innerHTML = vacio(errorDe(e), "ti-alert-triangle");
   }
