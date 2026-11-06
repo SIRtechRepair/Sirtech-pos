@@ -19,6 +19,15 @@ function sumarMeses(fecha, meses) {
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-01";
 }
 
+function fechaConDia(mes, dia) {
+  var p = String(mes).split("-");
+  var y = Number(p[0]);
+  var m = Number(p[1]);
+  var ultimo = new Date(y, m, 0).getDate();
+  var d = Math.min(Math.max(1, Math.round(Number(dia) || 5)), ultimo);
+  return y + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+}
+
 function eqTelefono(v) {
   var raw = String(v.contacto || "").replace(/\D/g, "");
   if (raw.length === 12 && raw.slice(0, 2) === "57") return raw;
@@ -436,6 +445,7 @@ async function modalVentaEq() {
           '<div><label class="lb">Cuota inicial</label><input id="ev-inicial" type="number" value="0"></div>' +
           '<div><label class="lb">Número de cuotas</label><input id="ev-ncuotas" type="number" value="0"></div>' +
           '<div><label class="lb">Mes del primer pago</label><input id="ev-primer-pago" type="month" value="' + mesSiguiente() + '"></div>' +
+          '<div><label class="lb">Día límite de pago</label><input id="ev-dia-limite" type="number" min="1" max="31" value="5"></div>' +
           '<div><label class="lb">Cuota mensual (calculada)</label><input id="ev-vcuota" type="number" readonly></div>' +
         "</div>" +
         '<div class="sep"></div>' +
@@ -529,7 +539,8 @@ async function modalVentaEq() {
       var ncuotas = tipo === "cuotas" ? fin.n : 0;
       var vcuota = tipo === "cuotas" ? Math.round(fin.cuota) : 0;
       var primerMes = $("#ev-primer-pago") && $("#ev-primer-pago").value ? $("#ev-primer-pago").value : mesSiguiente();
-      var primerPago = primerMes + "-01";
+      var diaLimite = Math.min(31, Math.max(1, Math.round(num($("#ev-dia-limite").value) || 5)));
+      var primerPago = fechaConDia(primerMes, diaLimite);
 
       var venta = {
         fecha: $("#ev-fecha").value ? $("#ev-fecha").value + "T12:00:00" : new Date().toISOString(),
@@ -567,7 +578,7 @@ async function modalVentaEq() {
 
       var ventaId = await db(sb.rpc("crear_venta_equipo", { p_venta: venta, p_pagos: pagos, p_agregados: [] }));
       if (ventaId) {
-        var cambios = { precio_contado: fin.contado };
+        var cambios = { precio_contado: fin.contado, dia_limite: diaLimite };
         if (tipo === "cuotas") cambios.primer_pago = primerPago;
         await db(sb.from("equipo_ventas").update(cambios).eq("id", ventaId));
 
@@ -575,7 +586,7 @@ async function modalVentaEq() {
           var cuotas = await db(sb.from("equipo_cuotas").select("id,numero").eq("venta_id", ventaId).order("numero"));
           for (var i = 0; i < cuotas.length; i++) {
             await db(sb.from("equipo_cuotas")
-              .update({ fecha_vencimiento: sumarMeses(primerPago, i) })
+              .update({ fecha_vencimiento: fechaConDia(sumarMeses(primerPago, i).slice(0, 7), diaLimite) })
               .eq("id", cuotas[i].id));
           }
         }
@@ -583,6 +594,12 @@ async function modalVentaEq() {
       cerrarModal();
       toast("Venta de equipo registrada");
       pintarEquipos();
+      if (ventaId) {
+        try {
+          var nueva = await db(sb.from("v_equipo_ventas").select("*").eq("id", ventaId).single());
+          if (nueva) modalDetalleEq(nueva);
+        } catch (e) { /* la venta ya quedó creada */ }
+      }
     } catch (err) { toast(errorDe(err), "error"); }
   });
 }
@@ -599,6 +616,8 @@ async function modalDetalleEq(v) {
       db(sb.from("equipo_pagos").select("*").eq("venta_id", v.id).order("fecha")),
       db(sb.from("equipo_venta_agregados").select("*").eq("venta_id", v.id).order("id"))
     ]);
+    var cuotaNum = {};
+    cuotas.forEach(function (c) { cuotaNum[c.id] = c.numero; });
     abrirModal(
       "<h3>Venta #" + v.numero + " · " + esc(v.equipo) + "</h3>" +
       '<p class="modal-sub">' + fdate(v.fecha) + " · " + esc(v.comprador || "Sin comprador") + " · " + esc(v.origen) + "</p>" +
@@ -606,30 +625,39 @@ async function modalDetalleEq(v) {
       '<div class="res-linea mini"><span>Ganancia</span><b>' + cop(v.ganancia) + "</b></div>" +
       '<div class="res-linea mini"><span>Abonos</span><b>' + cop(v.pagado) + "</b></div>" +
       '<div class="res-linea"><span>Debe</span><b class="' + (Number(v.saldo) > 0.5 ? "rojo" : "verde") + '">' + cop(v.saldo) + "</b></div>" +
-      (v.primer_pago ? '<div class="res-linea mini"><span>Primer pago</span><b>' + fdate(v.primer_pago) + "</b></div>" : "") +
       (v.en_mora ? '<div class="aviso"><i class="ti ti-alert-triangle"></i> En mora: ' + v.dias_mora + ' días. ' +
         '<button type="button" class="btn btn-sm" id="eq-wa"><i class="ti ti-brand-whatsapp"></i> Informar por WhatsApp</button></div>' : "") +
+      '<div class="datos" style="margin-top:10px">' +
+        filaDato("Fecha de venta", fdate(v.fecha)) +
+        filaDato("Primer pago", v.primer_pago ? fdate(v.primer_pago) : "—") +
+        filaDato("Día límite", v.dia_limite || 5) +
+        filaDato("Cuotas", v.numero_cuotas || 0) +
+        filaDato("Valor cuota", cop(v.valor_cuota || 0)) +
+      "</div>" +
       '<div class="sep"></div>' +
       '<div class="box-head"><h3>Cuotas</h3><div class="acciones-head">' +
         '<button class="btn-ghost btn-sm" id="eq-add-cuota"><i class="ti ti-plus"></i> Agregar cuota</button>' +
         (Number(v.saldo) > 0.5 ? '<button class="btn-ghost btn-sm" id="eq-abono"><i class="ti ti-plus"></i> Abono general</button>' : "") +
       "</div></div>" +
-      (cuotas.length ? '<div class="tabla-wrap"><table class="tabla"><thead><tr><th>#</th><th>Vence</th><th class="der">Monto</th><th class="der">Pagado</th><th>Estado</th><th></th></tr></thead><tbody>' +
+      (cuotas.length ? '<div class="tabla-wrap"><table class="tabla"><thead><tr><th>#</th><th>Vence</th><th class="der">Monto</th><th class="der">Pagado</th><th>Estado</th><th>Cumplimiento</th><th></th></tr></thead><tbody>' +
         cuotas.map(function (c) {
+          var mora = c.estado !== "pagada" && c.fecha_vencimiento && c.fecha_vencimiento < hoyInput();
+          var cumpl = c.estado === "pagada" ? "Pagada" : (mora ? "En mora (" + diasEntre(c.fecha_vencimiento, new Date()) + "d)" : "Al día");
           return "<tr><td>" + c.numero + "</td><td>" + fdate(c.fecha_vencimiento) + "</td>" +
             '<td class="der mono">' + cop(c.monto) + "</td>" +
             '<td class="der mono">' + cop(c.pagado) + "</td>" +
             "<td>" + c.estado + "</td>" +
+            '<td class="' + (mora ? "rojo" : (c.estado === "pagada" ? "verde" : "")) + '">' + cumpl + "</td>" +
             '<td class="der"><span class="acciones-item">' +
               '<button class="x" data-editar-cuota="' + c.id + '" title="Editar cuota"><i class="ti ti-pencil"></i></button>' +
-              (c.estado !== "pagada" ? '<button class="x" data-pagar-cuota="' + c.id + '" title="Pagar cuota"><i class="ti ti-cash"></i></button>' : "") +
+              (c.estado !== "pagada" ? '<button class="x" data-pagar-cuota="' + c.id + '" title="Registrar pago de esta cuota"><i class="ti ti-cash"></i></button>' : "") +
               '<button class="x" data-borrar-cuota="' + c.id + '" title="Eliminar cuota"><i class="ti ti-trash"></i></button>' +
             "</span></td></tr>";
         }).join("") + "</tbody></table></div>" : '<p class="mini-vacio">Sin cuotas. Puedes registrar abonos generales.</p>') +
       '<div class="box-head" style="margin-top:14px"><h3>Pagos</h3></div>' +
-      (pagos.length ? '<div class="tabla-wrap"><table class="tabla"><thead><tr><th>Fecha</th><th>Tipo</th><th>Método</th><th>Nota</th><th class="der">Monto</th><th></th></tr></thead><tbody>' +
+      (pagos.length ? '<div class="tabla-wrap"><table class="tabla"><thead><tr><th>Fecha</th><th>Cuota</th><th>Tipo</th><th>Método</th><th>Nota</th><th class="der">Monto</th><th></th></tr></thead><tbody>' +
         pagos.map(function (p) {
-          return "<tr><td>" + fdatetime(p.fecha) + "</td><td>" + esc(p.tipo) + "</td><td>" + badgeMetodo(p.metodo) + "</td><td>" + esc(p.nota || "—") + "</td><td class=\"der mono\">" + cop(p.monto) + "</td>" +
+          return "<tr><td>" + fdatetime(p.fecha) + "</td><td>" + (p.cuota_id ? "#" + (cuotaNum[p.cuota_id] || "—") : "General") + "</td><td>" + esc(p.tipo) + "</td><td>" + badgeMetodo(p.metodo) + "</td><td>" + esc(p.nota || "—") + "</td><td class=\"der mono\">" + cop(p.monto) + "</td>" +
             '<td class="der"><button class="x" data-borrar-pago-eq="' + p.id + '" title="Eliminar pago"><i class="ti ti-trash"></i></button></td></tr>';
         }).join("") + "</tbody></table></div>" : '<p class="mini-vacio">Sin pagos.</p>') +
       (agregados.length ? '<div class="box-head" style="margin-top:14px"><h3>Agregados</h3></div><div class="datos">' +
@@ -706,6 +734,7 @@ function modalEditarVentaEq(v) {
         '<div><label class="lb">Número de cuotas</label><input id="ve-ncuotas" type="number" value="' + Number(v.numero_cuotas || 0) + '"></div>' +
         '<div><label class="lb">Valor de cuota</label><input id="ve-vcuota" type="number" value="' + Number(v.valor_cuota || 0) + '"></div>' +
         '<div><label class="lb">Primer pago</label><input id="ve-primer-pago" type="date" value="' + inputDate(v.primer_pago) + '"></div>' +
+        '<div><label class="lb">Día límite de pago</label><input id="ve-dia-limite" type="number" min="1" max="31" value="' + Number(v.dia_limite || 5) + '"></div>' +
         '<div><label class="lb">Origen</label><select id="ve-origen"><option value="SNEIDER"' + (v.origen === "SNEIDER" ? " selected" : "") + '>Sneider</option><option value="SOCIEDAD"' + (v.origen === "SOCIEDAD" ? " selected" : "") + '>Sociedad</option></select></div>' +
         '<div><label class="lb">De quién es</label><input id="ve-dequien" value="' + esc(v.de_quien_es || "") + '"></div>' +
         '<div><label class="lb">Estado del equipo</label><select id="ve-estado">' +
@@ -721,6 +750,7 @@ function modalEditarVentaEq(v) {
   $("#form-eq-edit-venta").addEventListener("submit", async function (e) {
     e.preventDefault();
     try {
+      var diaNuevo = Math.min(31, Math.max(1, Math.round(num($("#ve-dia-limite").value) || 5)));
       await db(sb.from("equipo_ventas").update({
         fecha: $("#ve-fecha").value ? $("#ve-fecha").value + "T12:00:00" : v.fecha,
         equipo: $("#ve-equipo").value.trim(),
@@ -736,11 +766,17 @@ function modalEditarVentaEq(v) {
         numero_cuotas: num($("#ve-ncuotas").value),
         valor_cuota: num($("#ve-vcuota").value),
         primer_pago: $("#ve-primer-pago").value || null,
+        dia_limite: diaNuevo,
         origen: $("#ve-origen").value,
         de_quien_es: $("#ve-dequien").value.trim() || null,
         estado_equipo: $("#ve-estado").value,
         notas: $("#ve-notas").value.trim() || null
       }).eq("id", v.id));
+
+      if (diaNuevo !== Number(v.dia_limite || 5)) {
+        await db(sb.rpc("aplicar_dia_limite", { p_venta_id: v.id, p_dia: diaNuevo }));
+      }
+
       toast("Venta actualizada");
       pintarEquipos();
       modalDetalleEq(v);
@@ -785,7 +821,7 @@ function modalAgregarCuotaEq(v, cuotas) {
         '<div><label class="lb">Monto</label><input id="ac-monto" type="number" value="' + Number(v.valor_cuota || 0) + '" required></div>' +
         '<div><label class="lb">Método si ya está pagada</label><select id="ac-metodo">' + eqMetodos("efectivo") + "</select></div>" +
         '<div><label class="lb">Fecha de pago</label><input id="ac-fecha-pago" type="date" value="' + hoyInput() + '"></div>' +
-        '<div><label class="lb">Estado</label><label style="display:flex;align-items:center;gap:8px;height:38px"><input type="checkbox" id="ac-pagada" style="width:auto;height:auto"> Ya estaba pagada</label></div>' +
+        '<div><label class="lb">Estado</label><label style="display:flex;align-items:center;gap:8px;height:38px"><input type="checkbox" id="ac-pagada" checked style="width:auto;height:auto"> Registrar el pago ahora</label></div>' +
       "</div>" +
       '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
         '<button type="submit" class="btn"><i class="ti ti-check"></i> Agregar cuota</button></div>' +
@@ -794,11 +830,17 @@ function modalAgregarCuotaEq(v, cuotas) {
   $("#form-add-cuota").addEventListener("submit", async function (e) {
     e.preventDefault();
     try {
+      var monto = num($("#ac-monto").value);
+      if (monto <= 0) throw new Error("El monto debe ser mayor a 0.");
+      if ($("#ac-pagada").checked && monto > Number(v.saldo) + 0.5) {
+        throw new Error("El pago supera el saldo pendiente (" + cop(v.saldo) + ").");
+      }
+
       var c = await db(sb.from("equipo_cuotas").insert({
         venta_id: v.id,
         numero: num($("#ac-numero").value),
         fecha_vencimiento: $("#ac-fecha").value || null,
-        monto: num($("#ac-monto").value)
+        monto: monto
       }).select().single());
 
       if ($("#ac-pagada").checked) {
@@ -806,7 +848,7 @@ function modalAgregarCuotaEq(v, cuotas) {
           venta_id: v.id,
           cuota_id: c.id,
           fecha: fechaPago($("#ac-fecha-pago").value),
-          monto: num($("#ac-monto").value),
+          monto: monto,
           metodo: $("#ac-metodo").value,
           tipo: "cuota",
           nota: "Cuota histórica",

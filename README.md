@@ -60,6 +60,7 @@ Después de lo anterior, ejecuta en orden:
 | 16 | `sql/16_mora_whatsapp.sql` | Primer pago, mora automática y contacto para WhatsApp |
 | 17 | `sql/17_costos_servicios_cuotas.sql` | Gastos de reparación sin multiplicar y conteo de cuotas |
 | 18 | `sql/18_eliminar_editar_ventas.sql` | Editar/eliminar ventas de accesorios y restaurar stock |
+| 19 | `sql/19_dia_limite_mora.sql` | Día límite, mora correcta y abonos aplicados a cuotas |
 
 Cada archivo abre y cierra su propia transacción: si algo falla, no deja datos a medias.
 
@@ -209,13 +210,15 @@ insert into public.servicios (nombre) values ('NOMBRE DEL SERVICIO');
 ### Equipos
 - Inventario por IMEI (disponible, en reparación, consignación, vendido).
 - Ventas de **contado** o **a cuotas**.
-- A cuotas: precio de contado, cuota inicial, número de cuotas y **mes del primer pago**.
+- A cuotas: precio de contado, cuota inicial, número de cuotas, **mes del primer pago** y **día límite**.
 - Interés del **70% anual** proporcional al plazo: 6 meses = 35% sobre el monto financiado.
 - El interés se suma al total cobrado y a la ganancia.
 - Generación automática de cuotas y registro de pagos con fecha y método.
 - Pestañas **Sneider**, **Sociedad** y **Todos** con la misma lógica.
 - Filtros por estado: pagada, por pagar, en mora, en reparación, garantía y disponible.
-- **Mora automática**: si una cuota vence y sigue pendiente, la venta muestra los días de atraso.
+- **Mora correcta**: solo aparece si una cuota venció y no tiene el pago registrado.
+- Los **abonos generales** cubren automáticamente las cuotas más antiguas.
+- **Historial por cuota**: cuota pagada, valor, fecha exacta y cumplimiento (al día/en mora).
 - Botón de **WhatsApp** para abrir el chat del cliente con el mensaje de mora.
 - El saldo y el estado de pago se calculan solos.
 - Cualquier venta o cuota se puede corregir; los pagos se pueden eliminar y el saldo se recalcula.
