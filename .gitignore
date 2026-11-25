@@ -1,0 +1,23 @@
+node_modules/
+.DS_Store
+*.log
+.env
+
+# Exportaciones y hojas de cálculo con datos reales: nunca al repo público.
+*.csv
+*.xlsx
+*.xls
+sql/*import*.sql
+sql/12_seed_productos.sql
+import/
+
+# Archivos de importación: contienen datos reales de clientes.
+# Se regeneran con: python3 import/generar_sql.py
+sql/03_import_clientes.sql
+sql/04_import_ordenes.sql
+sql/05_import_items.sql
+sql/06_import_pagos_estados.sql
+
+# Importación de ventas históricas: contienen datos de compradores.
+sql/13_import_accesorios.sql
+sql/14_import_equipos.sql

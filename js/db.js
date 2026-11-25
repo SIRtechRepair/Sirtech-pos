@@ -1,0 +1,519 @@
+/* ============================================================
+   SIR·TECH POS · Acceso a datos
+   ============================================================ */
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+});
+
+async function db(promise) {
+  const res = await promise;
+  if (res.error) throw res.error;
+  return res.data;
+}
+
+/* Trae todas las filas paginando, para que los reportes "todo el tiempo"
+   no se corten en el máximo de filas por petición (1.000 en Supabase). */
+async function dbAll(build, pageSize) {
+  const size = pageSize || 1000;
+  let desde = 0;
+  let out = [];
+  while (true) {
+    const rows = await db(build().range(desde, desde + size - 1));
+    if (!rows || !rows.length) break;
+    out = out.concat(rows);
+    if (rows.length < size) break;
+    desde += size;
+    if (desde > 100000) break;
+  }
+  return out;
+}
+
+/* ---------------- SESIÓN ---------------- */
+/* La sesión dura como máximo 24 horas desde el login, en cada dispositivo.
+   No se renueva con la actividad: así el POS pide login al menos una vez al día. */
+const DURACION_SESION_MS = 24 * 60 * 60 * 1000;
+const LS_LOGIN_AT = "sirtech_pos_login_at";
+let _loginAt = 0;
+
+function marcarLogin() {
+  _loginAt = Date.now();
+  try { localStorage.setItem(LS_LOGIN_AT, String(_loginAt)); } catch (e) { /* sin almacenamiento */ }
+}
+
+function limpiarLogin() {
+  _loginAt = 0;
+  try { localStorage.removeItem(LS_LOGIN_AT); } catch (e) { /* sin almacenamiento */ }
+}
+
+function loginVencido() {
+  var t = _loginAt;
+  if (!t) {
+    try { t = Number(localStorage.getItem(LS_LOGIN_AT) || 0); } catch (e) { t = 0; }
+  }
+  return !t || Date.now() - t >= DURACION_SESION_MS;
+}
+
+async function sesionActual() {
+  const { data } = await sb.auth.getSession();
+  return data.session || null;
+}
+
+async function perfilActual() {
+  const s = await sesionActual();
+  if (!s) return null;
+  const rows = await db(sb.from("perfiles").select("*").eq("id", s.user.id).limit(1));
+  return rows && rows[0] ? rows[0] : null;
+}
+
+async function entrar(email, password) {
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+  marcarLogin();
+  return data.session;
+}
+
+async function salir() {
+  limpiarLogin();
+  try {
+    // Solo este dispositivo: no cerrar la sesión de los demás.
+    await sb.auth.signOut({ scope: "local" });
+  } catch (e) {
+    // La sesión local ya se borró; si falló la revocación en el servidor,
+    // el token deja de ser accesible desde este navegador igualmente.
+    console.warn("No se pudo revocar la sesión en el servidor:", e);
+  }
+}
+
+async function salirOtros() {
+  const { error } = await sb.auth.signOut({ scope: "others" });
+  if (error) throw error;
+}
+
+/* ---------------- CATÁLOGO DE SERVICIOS ---------------- */
+let _serviciosCache = null;
+
+async function listarServicios() {
+  return db(sb.from("servicios").select("id,nombre")
+    .eq("activo", true).order("nombre"));
+}
+
+async function serviciosCatalogo(forzar) {
+  if (!_serviciosCache || forzar) _serviciosCache = await listarServicios();
+  return _serviciosCache;
+}
+
+function normalizarTexto(s) {
+  return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function servicioPorNombre(nombre, lista) {
+  const n = normalizarTexto(nombre);
+  if (!n) return null;
+  return (lista || _serviciosCache || []).find(function (s) {
+    return normalizarTexto(s.nombre) === n;
+  }) || null;
+}
+
+/* ---------------- CLIENTES ---------------- */
+async function buscarClientes(texto, limite) {
+  const t = (texto || "").trim().replace(/[,()]/g, " ");
+  let q = sb.from("clientes").select("id,nombre,telefono,telefono_norm");
+  if (t) {
+    const tel = telNorm(t);
+    const filtros = ["nombre.ilike.%" + t + "%"];
+    if (tel.length >= 3) filtros.push("telefono_norm.ilike.%" + tel + "%");
+    q = q.or(filtros.join(","));
+  }
+  q = q.order("nombre").limit(limite || 20);
+  return db(q);
+}
+
+async function clientesConResumen() {
+  const filas = await db(sb.rpc("resumen_clientes"));
+  return (filas || []).map(function (r) {
+    return {
+      cliente: {
+        id: r.id, nombre: r.nombre, telefono: r.telefono,
+        telefono_norm: r.telefono_norm, creado_en: r.creado_en
+      },
+      ordenes: Number(r.ordenes) || 0,
+      total: Number(r.total) || 0,
+      saldo: Number(r.saldo) || 0
+    };
+  });
+}
+
+async function clientePorId(id) {
+  const rows = await db(sb.from("clientes").select("*").eq("id", id).limit(1));
+  return rows && rows[0] ? rows[0] : null;
+}
+
+async function crearCliente(datos) {
+  const tel = (datos.telefono || "").trim();
+  const fila = {
+    nombre: (datos.nombre || "").trim(),
+    telefono: tel || null,
+    telefono_norm: telNorm(tel) || null,
+    email: (datos.email || "").trim() || null,
+    notas: (datos.notas || "").trim() || null
+  };
+  const rows = await db(sb.from("clientes").insert(fila).select().single());
+  return rows;
+}
+
+async function eliminarCliente(id) {
+  return db(sb.from("clientes").delete().eq("id", id));
+}
+
+async function actualizarCliente(id, datos) {
+  const tel = (datos.telefono || "").trim();
+  const fila = {
+    nombre: (datos.nombre || "").trim(),
+    telefono: tel || null,
+    telefono_norm: telNorm(tel) || null,
+    email: (datos.email || "").trim() || null,
+    notas: (datos.notas || "").trim() || null,
+    actualizado_en: new Date().toISOString()
+  };
+  return db(sb.from("clientes").update(fila).eq("id", id).select().single());
+}
+
+/* ---------------- ÓRDENES ---------------- */
+const CAMPOS_ORDEN =
+  "id,numero,cliente_id,equipo,marca,modelo,imei,color,falla,diagnostico,tecnico,estado," +
+  "prioridad,envio,envio_extra,gastos,descuento,total,costo_servicios,costo_repuestos," +
+  "ganancia,pagado,saldo,garantia_dias," +
+  "garantia_hasta,fecha_recibido,fecha_prometida,fecha_entregado,notas,historico,creado_en," +
+  "clientes(nombre,telefono)";
+
+async function listarOrdenes(opciones) {
+  const o = opciones || {};
+  let q = sb.from("ordenes").select(CAMPOS_ORDEN);
+
+  if (o.estados && o.estados.length) q = q.in("estado", o.estados);
+  if (o.desde) q = q.gte("fecha_recibido", inicioDiaISO(o.desde));
+  if (o.hasta) q = q.lte("fecha_recibido", finDiaISO(o.hasta));
+  if (o.clienteId) q = q.eq("cliente_id", o.clienteId);
+  if (o.soloHistorico === false) q = q.eq("historico", false);
+
+  if (o.texto) {
+    const t = o.texto.trim().replace(/[,()]/g, " ");
+    const partes = ["equipo.ilike.%" + t + "%", "imei.ilike.%" + t + "%", "falla.ilike.%" + t + "%"];
+    if (/^\d+$/.test(t)) partes.push("numero.eq." + t);
+    const cli = await buscarClientes(t, 30);
+    if (cli.length) partes.push("cliente_id.in.(" + cli.map(function (c) { return c.id; }).join(",") + ")");
+    q = q.or(partes.join(","));
+  }
+
+  q = q.order("prioridad", { ascending: false })
+       .order("fecha_recibido", { ascending: false })
+       .limit(o.limite || 2000);
+
+  return db(q);
+}
+
+async function obtenerOrden(id) {
+  const orden = await db(sb.from("ordenes").select(CAMPOS_ORDEN).eq("id", id).single());
+  const [items, pagos, historial, garantias] = await Promise.all([
+    db(sb.from("orden_items").select("*").eq("orden_id", id).order("id")),
+    db(sb.from("pagos").select("*").eq("orden_id", id).order("fecha")),
+    db(sb.from("historial_estados").select("*").eq("orden_id", id).order("creado_en")),
+    db(sb.from("garantias").select("*").eq("orden_id", id).order("fecha", { ascending: false }))
+  ]);
+  return { orden: orden, items: items, pagos: pagos, historial: historial, garantias: garantias };
+}
+
+async function crearOrden(cab, items, pago) {
+  let clienteId = cab.cliente_id || null;
+
+  if (!clienteId) {
+    const nombre = (cab.cliente_nombre || "").trim();
+    if (!nombre) throw new Error("Escribe el nombre del cliente.");
+    const nuevo = await crearCliente({ nombre: nombre, telefono: cab.cliente_telefono });
+    clienteId = nuevo.id;
+  }
+
+  const fila = {
+    cliente_id: clienteId,
+    equipo: (cab.equipo || "").trim() || "Equipo",
+    marca: (cab.marca || "").trim() || null,
+    modelo: (cab.modelo || "").trim() || null,
+    imei: (cab.imei || "").trim() || null,
+    color: (cab.color || "").trim() || null,
+    falla: (cab.falla || "").trim() || null,
+    diagnostico: (cab.diagnostico || "").trim() || null,
+    tecnico: (cab.tecnico || "").trim() || null,
+    estado: cab.estado || "diagnostico",
+    prioridad: cab.prioridad || "normal",
+    envio: 0,
+    gastos: num(cab.gastos),
+    descuento: num(cab.descuento),
+    garantia_dias: Math.max(0, Math.round(num(cab.garantia_dias))),
+    fecha_prometida: cab.fecha_prometida || null,
+    notas: (cab.notas || "").trim() || null,
+    creado_por: (await sesionActual()).user.id
+  };
+
+  const orden = await db(sb.from("ordenes").insert(fila).select().single());
+
+  const filas = (items || []).filter(function (i) { return i.descripcion && i.descripcion.trim(); })
+    .map(function (i) {
+      return {
+        orden_id: orden.id,
+        tipo: "servicio",
+        servicio_id: i.servicio_id || null,
+        descripcion: i.descripcion.trim(),
+        cantidad: numCantidad(i.cantidad) || 1,
+        costo_unitario: num(i.costo_unitario),
+        precio_unitario: num(i.precio_unitario),
+        envio: num(i.envio),
+        costo_repuestos: num(i.costo_repuestos)
+      };
+    });
+  if (filas.length) await db(sb.from("orden_items").insert(filas));
+
+  const pagos = Array.isArray(pago) ? pago : (pago ? [pago] : []);
+  const filasPago = [];
+  if (pagos.length) {
+    const s = await sesionActual();
+    pagos.forEach(function (p) {
+      if (num(p.monto) <= 0) return;
+      filasPago.push({
+        orden_id: orden.id,
+        monto: num(p.monto),
+        metodo: p.metodo || "efectivo",
+        nota: (p.nota || "Abono inicial").trim() || null,
+        fecha: fechaPago(p.fecha),
+        usuario: s ? s.user.id : null
+      });
+    });
+  }
+  if (filasPago.length) await db(sb.from("pagos").insert(filasPago));
+
+  return orden;
+}
+
+async function actualizarOrden(id, campos) {
+  const permitidos = ["equipo", "marca", "modelo", "imei", "color", "falla", "diagnostico",
+    "tecnico", "estado", "prioridad", "envio", "envio_extra", "gastos", "descuento",
+    "garantia_dias", "fecha_prometida", "notas", "cliente_id"];
+  const fila = {};
+  permitidos.forEach(function (k) {
+    if (k in campos) fila[k] = campos[k];
+  });
+  return db(sb.from("ordenes").update(fila).eq("id", id).select().single());
+}
+
+async function cambiarEstado(id, estado) {
+  return db(sb.from("ordenes").update({ estado: estado }).eq("id", id).select().single());
+}
+
+async function eliminarOrden(id) {
+  return db(sb.from("ordenes").delete().eq("id", id));
+}
+
+/* ---------------- ÍTEMS ---------------- */
+async function agregarItem(ordenId, item) {
+  return db(sb.from("orden_items").insert({
+    orden_id: ordenId,
+    tipo: "servicio",
+    servicio_id: item.servicio_id || null,
+    descripcion: item.descripcion.trim(),
+    cantidad: numCantidad(item.cantidad) || 1,
+    costo_unitario: num(item.costo_unitario),
+    precio_unitario: num(item.precio_unitario),
+    envio: num(item.envio),
+    costo_repuestos: num(item.costo_repuestos)
+  }).select().single());
+}
+
+async function actualizarItem(id, item) {
+  return db(sb.from("orden_items").update({
+    servicio_id: item.servicio_id || null,
+    descripcion: item.descripcion.trim(),
+    cantidad: numCantidad(item.cantidad) || 1,
+    costo_unitario: num(item.costo_unitario),
+    precio_unitario: num(item.precio_unitario),
+    envio: num(item.envio),
+    costo_repuestos: num(item.costo_repuestos)
+  }).eq("id", id).select().single());
+}
+
+async function eliminarItem(id) {
+  return db(sb.from("orden_items").delete().eq("id", id));
+}
+
+/* ---------------- PAGOS ---------------- */
+function fechaPago(f) {
+  if (!f) return new Date().toISOString();
+  const txt = String(f).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(txt)) {
+    // Mediodía local: evita que un pago de la noche se corra al día siguiente.
+    const d = new Date(txt + "T12:00:00");
+    return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+  }
+  const d = new Date(txt);
+  return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+}
+
+async function agregarPago(ordenId, pago) {
+  const s = await sesionActual();
+  const pagos = Array.isArray(pago) ? pago : [pago];
+  const filas = pagos.filter(function (p) { return num(p.monto) > 0; })
+    .map(function (p) {
+      return {
+        orden_id: ordenId,
+        monto: num(p.monto),
+        metodo: p.metodo || "efectivo",
+        nota: (p.nota || "").trim() || null,
+        fecha: fechaPago(p.fecha),
+        usuario: s ? s.user.id : null
+      };
+    });
+  if (!filas.length) throw new Error("Escribe un monto mayor a 0.");
+  return db(sb.from("pagos").insert(filas).select());
+}
+
+async function eliminarPago(id) {
+  return db(sb.from("pagos").delete().eq("id", id));
+}
+
+/* ---------------- MOVIMIENTOS DE DINERO ---------------- */
+async function listarMovimientos(desde, hasta) {
+  let q = sb.from("movimientos_dinero").select("*").order("creado_en", { ascending: false }).limit(300);
+  if (desde) q = q.gte("creado_en", inicioDiaISO(desde));
+  if (hasta) q = q.lte("creado_en", finDiaISO(hasta));
+  return db(q);
+}
+
+async function crearMovimiento(mov) {
+  const s = await sesionActual();
+  return db(sb.from("movimientos_dinero").insert({
+    tipo: mov.tipo,
+    cuenta: mov.cuenta || "efectivo",
+    monto: num(mov.monto),
+    persona: (mov.persona || "").trim() || null,
+    nota: (mov.nota || "").trim() || null,
+    usuario: s ? s.user.id : null
+  }).select().single());
+}
+
+async function eliminarMovimiento(id) {
+  return db(sb.from("movimientos_dinero").delete().eq("id", id));
+}
+
+/* ---------------- CONSULTAS DE REPORTES ---------------- */
+function _rangoFechas(q, campo, desde, hasta) {
+  if (desde) q = q.gte(campo, inicioDiaISO(desde));
+  if (hasta) q = q.lte(campo, finDiaISO(hasta));
+  return q;
+}
+
+async function ordenesEntre(desde, hasta) {
+  return dbAll(function () {
+    var q = sb.from("ordenes")
+      .select("id,numero,estado,total,costo_servicios,costo_repuestos,envio,gastos,descuento,ganancia,saldo,pagado,fecha_recibido,fecha_entregado,equipo,falla,tecnico,historico")
+      .order("id");
+    return _rangoFechas(q, "fecha_recibido", desde, hasta);
+  });
+}
+
+async function ordenesEntregadasEntre(desde, hasta) {
+  return dbAll(function () {
+    var q = sb.from("ordenes")
+      .select("id,numero,total,costo_servicios,costo_repuestos,envio,gastos,descuento,ganancia,garantia_dias,fecha_entregado,equipo,tecnico")
+      .eq("estado", "entregado")
+      .order("id");
+    return _rangoFechas(q, "fecha_entregado", desde, hasta);
+  });
+}
+
+/* Cobros de reparaciones, accesorios y equipos en un solo listado. */
+async function pagosEntre(desde, hasta) {
+  const res = await Promise.all([
+    dbAll(function () {
+      var q = sb.from("pagos").select("id,orden_id,monto,metodo,fecha").order("id");
+      return _rangoFechas(q, "fecha", desde, hasta);
+    }),
+    dbAll(function () {
+      var q = sb.from("accesorio_pagos").select("id,venta_id,monto,metodo,fecha").order("id");
+      return _rangoFechas(q, "fecha", desde, hasta);
+    }),
+    dbAll(function () {
+      var q = sb.from("equipo_pagos").select("id,venta_id,monto,metodo,fecha").order("id");
+      return _rangoFechas(q, "fecha", desde, hasta);
+    })
+  ]);
+  function conOrigen(lista, origen) {
+    return lista.map(function (p) { p.origen = origen; return p; });
+  }
+  return conOrigen(res[0], "reparacion")
+    .concat(conOrigen(res[1], "accesorio"))
+    .concat(conOrigen(res[2], "equipo"))
+    .sort(function (a, b) { return new Date(a.fecha) - new Date(b.fecha); });
+}
+
+async function movimientosEntre(desde, hasta) {
+  return dbAll(function () {
+    var q = sb.from("movimientos_dinero")
+      .select("id,tipo,cuenta,monto,creado_en")
+      .order("id");
+    return _rangoFechas(q, "creado_en", desde, hasta);
+  });
+}
+
+async function accesoriosVentasEntre(desde, hasta) {
+  return dbAll(function () {
+    var q = sb.from("accesorio_ventas")
+      .select("id,total,ganancia,pagado,saldo,fecha,historico")
+      .order("id");
+    return _rangoFechas(q, "fecha", desde, hasta);
+  });
+}
+
+async function equiposVentasEntre(desde, hasta) {
+  return dbAll(function () {
+    var q = sb.from("equipo_ventas")
+      .select("id,total,ganancia,pagado,saldo,fecha,historico")
+      .order("id");
+    return _rangoFechas(q, "fecha", desde, hasta);
+  });
+}
+
+async function saldoCarteraTotal() {
+  const res = await Promise.all([
+    dbAll(function () { return sb.from("v_cartera").select("saldo").order("id"); }),
+    dbAll(function () {
+      return sb.from("v_accesorio_ventas").select("saldo")
+        .gt("saldo", 0.5).neq("estado", "cancelada").order("id");
+    }),
+    dbAll(function () {
+      return sb.from("v_equipo_ventas").select("saldo")
+        .gt("saldo", 0.5).neq("estado_pago", "cancelada").order("id");
+    })
+  ]);
+  return res.reduce(function (total, filas) {
+    return total + filas.reduce(function (s, r) { return s + Number(r.saldo || 0); }, 0);
+  }, 0);
+}
+
+/* ---------------- PANEL ---------------- */
+async function datosPanel() {
+  const hoy = hoyInput();
+  const res = await Promise.all([
+    db(sb.from("ordenes").select("id,numero,estado,prioridad,total,saldo,equipo,cliente_id,fecha_prometida,fecha_recibido,garantia_hasta,garantia_dias,clientes(nombre,telefono)").in("estado", ESTADOS_ABIERTOS)),
+    db(sb.from("v_cartera").select("*").order("fecha_recibido").limit(200)),
+    pagosEntre(hoy, hoy),
+    db(sb.from("ordenes").select("id,numero,equipo,garantia_hasta,clientes(nombre,telefono)").not("garantia_hasta", "is", null).gte("garantia_hasta", hoy).lte("garantia_hasta", inputDate(new Date(Date.now() + 7 * 86400000)))),
+    saldoCarteraTotal()
+  ]);
+  return {
+    abiertas: res[0],
+    cartera: res[1],
+    pagosHoy: res[2],
+    garantias: res[3],
+    carteraTotal: res[4]
+  };
+}

@@ -1,0 +1,822 @@
+/* ============================================================
+   SIR·TECH POS · Accesorios, inventario FIFO y garantías
+   ============================================================ */
+
+let modoAcc = "inventario";
+let _accStock = null;
+let _accVentas = null;
+let _accGarantias = null;
+
+function accMetodos(sel) {
+  return METODOS_PAGO.filter(function (m) { return m.k !== "mixto"; })
+    .map(function (m) {
+      return '<option value="' + m.k + '"' + (m.k === sel ? " selected" : "") + ">" + m.n + "</option>";
+    }).join("");
+}
+
+function accProductoPorNombre(nombre) {
+  var n = normalizarTexto(nombre);
+  if (!n) return null;
+  return (_accStock || []).find(function (p) { return normalizarTexto(p.nombre) === n; }) || null;
+}
+
+function accDatalist() {
+  return '<datalist id="acc-prod-dl">' + (_accStock || []).map(function (p) {
+    return '<option value="' + esc(p.nombre) + '"></option>';
+  }).join("") + "</datalist>";
+}
+
+async function vistaAccesorios() {
+  $("#vista").innerHTML =
+    '<div class="pagina-head">' +
+      '<div><h2>Accesorios</h2><p class="sub">Inventario, ventas y garantías</p></div>' +
+      '<div class="seg" id="acc-modo">' +
+        '<button data-acc="inventario"><i class="ti ti-box"></i> Inventario</button>' +
+        '<button data-acc="ventas"><i class="ti ti-shopping-cart"></i> Ventas</button>' +
+        '<button data-acc="garantias"><i class="ti ti-shield-check"></i> Garantías</button>' +
+      "</div>" +
+    "</div>" +
+    '<div id="zona-acc">' + cargando() + "</div>";
+
+  $("#acc-modo").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-acc]");
+    if (!b || b.dataset.acc === modoAcc) return;
+    modoAcc = b.dataset.acc;
+    $$("#acc-modo [data-acc]").forEach(function (x) {
+      x.classList.toggle("on", x.dataset.acc === modoAcc);
+    });
+    pintarAccesorios();
+  });
+
+  $$("#acc-modo [data-acc]").forEach(function (x) {
+    x.classList.toggle("on", x.dataset.acc === modoAcc);
+  });
+  pintarAccesorios();
+}
+
+async function resumenVentasAcc() {
+  var filas = await dbAll(function () {
+    return sb.from("v_accesorio_ventas").select("total,ganancia,pagado,saldo").order("id");
+  });
+  return filas.reduce(function (r, v) {
+    r.ventas += 1;
+    r.total += Number(v.total || 0);
+    r.ganancia += Number(v.ganancia || 0);
+    r.debe += Number(v.saldo || 0);
+    return r;
+  }, { ventas: 0, total: 0, ganancia: 0, debe: 0 });
+}
+
+async function pintarAccesorios() {
+  var zona = $("#zona-acc");
+  if (!zona) return;
+  zona.innerHTML = cargando();
+  try {
+    if (modoAcc === "inventario") {
+      _accStock = await db(sb.from("v_accesorio_stock").select("*").order("nombre"));
+      zona.innerHTML = htmlInventarioAcc();
+      conectarInventarioAcc();
+    } else if (modoAcc === "ventas") {
+      var res = await Promise.all([
+        db(sb.from("v_accesorio_stock").select("*").order("nombre")),
+        db(sb.from("v_accesorio_ventas").select("*").order("fecha", { ascending: false }).limit(400)),
+        resumenVentasAcc()
+      ]);
+      _accStock = res[0];
+      _accVentas = res[1];
+      zona.innerHTML = htmlVentasAcc(res[2]);
+      conectarVentasAcc();
+    } else {
+      _accStock = await db(sb.from("v_accesorio_stock").select("*").order("nombre"));
+      _accGarantias = await db(sb.from("accesorio_garantias").select("*").order("fecha", { ascending: false }).limit(300));
+      zona.innerHTML = htmlGarantiasAcc();
+      conectarGarantiasAcc();
+    }
+  } catch (e) {
+    zona.innerHTML = vacio(errorDe(e), "ti-alert-triangle");
+  }
+}
+
+/* ---------------- Inventario ---------------- */
+function htmlInventarioAcc() {
+  var prods = _accStock || [];
+  var unidades = prods.reduce(function (s, p) { return s + Number(p.stock || 0); }, 0);
+  var valor = prods.reduce(function (s, p) { return s + Number(p.stock || 0) * Number(p.costo_promedio || 0); }, 0);
+  var bajos = prods.filter(function (p) { return Number(p.stock_minimo || 0) > 0 && Number(p.stock) <= Number(p.stock_minimo); }).length;
+
+  return '<div class="kpis">' +
+      kpi("Productos", prods.length, "ti-box") +
+      kpi("Unidades", unidades, "ti-stack") +
+      kpi("Valor inventario", cop(valor), "ti-coin") +
+      kpi("Stock bajo", bajos, "ti-alert-triangle", bajos ? "rojo" : "verde") +
+    "</div>" +
+    '<div class="box">' +
+      '<div class="box-head"><h3><i class="ti ti-box"></i> Inventario</h3>' +
+        '<div class="acciones-head">' +
+          '<div class="f-busca"><i class="ti ti-search"></i><input id="acc-buscar" placeholder="Buscar producto…"></div>' +
+          '<button class="btn btn-sm" id="acc-nuevo"><i class="ti ti-plus"></i> Nuevo producto</button>' +
+        "</div></div>" +
+      '<div class="tabla-wrap"><table class="tabla"><thead><tr>' +
+        "<th>Producto</th><th>Categoría</th><th class=\"der\">Stock</th><th class=\"der\">Costo prom.</th>" +
+        "<th class=\"der\">Precio</th><th class=\"der\">Mínimo</th><th></th></tr></thead><tbody id=\"acc-tbody\">" +
+        filasInventarioAcc(prods) +
+      "</tbody></table></div>" +
+    "</div>" + accDatalist();
+}
+
+function filasInventarioAcc(prods) {
+  if (!prods.length) return '<tr><td colspan="7">' + vacio("Sin productos. Registra un ingreso.", "ti-box") + "</td></tr>";
+  return prods.map(function (p) {
+    var bajo = Number(p.stock_minimo || 0) > 0 && Number(p.stock) <= Number(p.stock_minimo);
+    return "<tr><td><b>" + esc(p.nombre) + "</b>" + (p.activo ? "" : ' <span class="tag">Inactivo</span>') + "</td>" +
+      "<td>" + esc(p.categoria || "General") + "</td>" +
+      '<td class="der mono ' + (bajo ? "rojo" : "") + '">' + p.stock + "</td>" +
+      '<td class="der mono">' + cop(p.costo_promedio) + "</td>" +
+      '<td class="der mono">' + cop(p.precio) + "</td>" +
+      '<td class="der mono">' + p.stock_minimo + "</td>" +
+      '<td class="der"><span class="acciones-item">' +
+        '<button class="x" data-ingreso="' + p.id + '" title="Ingreso"><i class="ti ti-truck-delivery"></i></button>' +
+        '<button class="x" data-lotes="' + p.id + '" title="Lotes"><i class="ti ti-list-details"></i></button>' +
+        '<button class="x" data-ajustar="' + p.id + '" title="Ajustar stock"><i class="ti ti-adjustments"></i></button>' +
+        '<button class="x" data-editar-prod="' + p.id + '" title="Editar"><i class="ti ti-pencil"></i></button>' +
+        '<button class="x" data-borrar-prod="' + p.id + '" title="Eliminar producto"><i class="ti ti-trash"></i></button>' +
+      "</span></td></tr>";
+  }).join("");
+}
+
+function conectarInventarioAcc() {
+  $("#acc-nuevo").addEventListener("click", function () { modalIngresoAcc(null); });
+  $("#acc-buscar").addEventListener("input", function () {
+    var t = normalizarTexto(this.value);
+    var filtrados = (_accStock || []).filter(function (p) {
+      return !t || normalizarTexto(p.nombre).indexOf(t) > -1 || normalizarTexto(p.categoria).indexOf(t) > -1;
+    });
+    $("#acc-tbody").innerHTML = filasInventarioAcc(filtrados);
+  });
+  // Delegación: al buscar se vuelve a pintar solo el tbody, así que los
+  // clics se escuchan en el tbody y no en cada botón de la fila.
+  $("#acc-tbody").addEventListener("click", function (e) {
+    var b = e.target.closest("button");
+    if (!b) return;
+    var id = b.dataset.ingreso || b.dataset.lotes || b.dataset.ajustar ||
+      b.dataset.editarProd || b.dataset.borrarProd;
+    if (!id) return;
+    var p = (_accStock || []).find(function (x) { return String(x.id) === String(id); });
+    if (!p) return;
+    if (b.dataset.ingreso) modalIngresoAcc(p);
+    else if (b.dataset.lotes) modalLotesAcc(p);
+    else if (b.dataset.ajustar) modalAjusteStock(p);
+    else if (b.dataset.editarProd) modalEditarProducto(p);
+    else if (b.dataset.borrarProd) borrarProductoAcc(p);
+  });
+}
+
+async function borrarProductoAcc(p) {
+  if (!confirm("¿Eliminar el producto " + p.nombre + "?\nSe eliminarán sus lotes. Las ventas históricas se conservan.")) return;
+  try {
+    await db(sb.from("productos").delete().eq("id", p.id));
+    toast("Producto eliminado");
+    pintarAccesorios();
+  } catch (err) {
+    toast("No se pudo eliminar: tiene garantías asociadas. Puedes desactivarlo.", "error");
+  }
+}
+
+async function modalLotesAcc(p) {
+  try {
+    var lotes = await db(sb.from("producto_lotes").select("*").eq("producto_id", p.id).order("fecha").order("id"));
+    abrirModal(
+      "<h3>Lotes · " + esc(p.nombre) + "</h3>" +
+      '<p class="modal-sub">Stock actual: ' + p.stock + ' · Costo promedio: ' + cop(p.costo_promedio) + "</p>" +
+      (lotes.length ? '<div class="tabla-wrap"><table class="tabla"><thead><tr><th>Fecha</th><th class="der">Inicial</th><th class="der">Restante</th><th class="der">Costo</th><th>Proveedor</th><th></th></tr></thead><tbody>' +
+        lotes.map(function (l) {
+          return "<tr><td>" + fdate(l.fecha) + "</td>" +
+            '<td class="der mono">' + l.cantidad_inicial + "</td>" +
+            '<td class="der mono">' + l.cantidad_restante + "</td>" +
+            '<td class="der mono">' + cop(l.costo_unitario) + "</td>" +
+            "<td>" + esc(l.proveedor || "—") + "</td>" +
+            '<td class="der"><button class="x" data-editar-lote="' + l.id + '" title="Corregir lote"><i class="ti ti-pencil"></i></button></td></tr>';
+        }).join("") + "</tbody></table></div>" : '<p class="mini-vacio">Sin lotes.</p>') +
+      '<div class="modal-acciones">' +
+        '<button type="button" class="btn-ghost" id="lote-ajustar"><i class="ti ti-adjustments"></i> Ajustar stock</button>' +
+        '<button type="button" class="btn-ghost" data-cerrar>Cerrar</button></div>',
+      "ancho"
+    );
+    $("#lote-ajustar").addEventListener("click", function () { modalAjusteStock(p); });
+    $$("[data-editar-lote]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var l = lotes.find(function (x) { return String(x.id) === String(b.dataset.editarLote); });
+        if (l) modalEditarLote(l, p);
+      });
+    });
+  } catch (e) { toast(errorDe(e), "error"); }
+}
+
+function modalEditarLote(l, p) {
+  abrirModal(
+    "<h3>Corregir lote</h3>" +
+    '<p class="modal-sub">' + esc(p.nombre) + "</p>" +
+    '<form id="form-lote" class="form-modal">' +
+      '<div class="grid-2-in">' +
+        '<div><label class="lb">Fecha</label><input id="lo-fecha" type="date" value="' + inputDate(l.fecha) + '"></div>' +
+        '<div><label class="lb">Cantidad inicial</label><input id="lo-inicial" type="number" value="' + Number(l.cantidad_inicial) + '" required></div>' +
+        '<div><label class="lb">Cantidad restante</label><input id="lo-restante" type="number" value="' + Number(l.cantidad_restante) + '" required></div>' +
+        '<div><label class="lb">Costo unitario</label><input id="lo-costo" type="number" value="' + Number(l.costo_unitario) + '" required></div>' +
+        '<div><label class="lb">Proveedor</label><input id="lo-proveedor" value="' + esc(l.proveedor || "") + '"></div>' +
+      "</div>" +
+      '<label class="lb">Nota</label><input id="lo-nota" value="' + esc(l.nota || "") + '">' +
+      '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
+        '<button type="submit" class="btn"><i class="ti ti-device-floppy"></i> Guardar corrección</button></div>' +
+    "</form>"
+  );
+  $("#form-lote").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      await db(sb.rpc("actualizar_lote", {
+        p_lote_id: l.id,
+        p_cantidad_inicial: numCantidad($("#lo-inicial")),
+        p_cantidad_restante: numCantidad($("#lo-restante")),
+        p_costo_unitario: num($("#lo-costo").value),
+        p_fecha: $("#lo-fecha").value || null,
+        p_proveedor: $("#lo-proveedor").value.trim(),
+        p_nota: $("#lo-nota").value.trim()
+      }));
+      toast("Lote corregido");
+      await pintarAccesorios();
+      var fresh = (_accStock || []).find(function (x) { return String(x.id) === String(p.id); }) || p;
+      modalLotesAcc(fresh);
+    } catch (err) { toast(errorDe(err), "error"); }
+  });
+}
+
+function modalAjusteStock(p) {
+  abrirModal(
+    "<h3>Ajustar stock</h3>" +
+    '<p class="modal-sub">' + esc(p.nombre) + " · Stock actual: " + p.stock + "</p>" +
+    '<form id="form-ajuste" class="form-modal">' +
+      '<div class="grid-2-in">' +
+        '<div><label class="lb">Nuevo stock</label><input id="aj-stock" type="number" value="' + Number(p.stock) + '" required></div>' +
+        '<div><label class="lb">Costo para el ajuste</label><input id="aj-costo" type="number" value="' + Number(p.costo_promedio || 0) + '"></div>' +
+      "</div>" +
+      '<p class="mini">Si el stock sube, se crea un lote de ajuste. Si baja, se consumen los lotes más antiguos.</p>' +
+      '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
+        '<button type="submit" class="btn"><i class="ti ti-check"></i> Ajustar</button></div>' +
+    "</form>"
+  );
+  $("#form-ajuste").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      await db(sb.rpc("ajustar_stock", {
+        p_producto_id: p.id,
+        p_nuevo_stock: numCantidad($("#aj-stock")),
+        p_costo_unitario: num($("#aj-costo").value)
+      }));
+      cerrarModal();
+      toast("Stock ajustado");
+      pintarAccesorios();
+    } catch (err) { toast(errorDe(err), "error"); }
+  });
+}
+
+async function modalIngresoAcc(producto) {
+  var esNuevo = !producto;
+  abrirModal(
+    "<h3>" + (esNuevo ? "Nuevo producto" : "Ingreso de inventario") + "</h3>" +
+    '<form id="form-ingreso" class="form-modal">' +
+      '<label class="lb">Producto</label>' +
+      '<input id="ing-nombre" list="acc-prod-dl" placeholder="Buscar o escribir producto…" value="' + esc(producto ? producto.nombre : "") + '" ' + (esNuevo ? "" : "readonly") + ' required>' +
+      '<div class="grid-2-in">' +
+        '<div><label class="lb">Categoría</label><input id="ing-categoria" value="' + esc(producto ? producto.categoria || "" : "") + '" placeholder="General"></div>' +
+        '<div><label class="lb">Precio de venta</label><input id="ing-precio" type="number" inputmode="numeric" value="' + (producto ? Number(producto.precio || 0) : 0) + '"></div>' +
+        '<div><label class="lb">Cantidad</label><input id="ing-cant" type="number" inputmode="numeric" value="1" required></div>' +
+        '<div><label class="lb">Costo unitario</label><input id="ing-costo" type="number" inputmode="numeric" value="' + (producto ? Number(producto.costo_promedio || 0) : 0) + '" required></div>' +
+        '<div><label class="lb">Proveedor</label><input id="ing-proveedor" placeholder="Opcional"></div>' +
+        '<div><label class="lb">Fecha</label><input id="ing-fecha" type="date" value="' + hoyInput() + '"></div>' +
+      "</div>" +
+      '<label class="lb">Nota</label><input id="ing-nota" placeholder="Opcional">' +
+      '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
+        '<button type="submit" class="btn"><i class="ti ti-device-floppy"></i> Guardar ingreso</button></div>' +
+    "</form>"
+  );
+  if (!esNuevo) {
+    var dl = document.getElementById("acc-prod-dl");
+    if (!dl) document.body.insertAdjacentHTML("beforeend", accDatalist());
+  }
+  $("#form-ingreso").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      var nombre = $("#ing-nombre").value.trim();
+      var existente = accProductoPorNombre(nombre);
+      var prod = {
+        nombre: existente ? existente.nombre : nombre,
+        categoria: $("#ing-categoria").value.trim() || "General",
+        precio: num($("#ing-precio").value)
+      };
+      var lote = {
+        cantidad: numCantidad($("#ing-cant")),
+        costo_unitario: num($("#ing-costo").value),
+        proveedor: $("#ing-proveedor").value.trim(),
+        fecha: $("#ing-fecha").value || hoyInput(),
+        nota: $("#ing-nota").value.trim()
+      };
+      await db(sb.rpc("ingresar_lote", { p_producto: prod, p_lote: lote }));
+      cerrarModal();
+      toast("Ingreso registrado");
+      pintarAccesorios();
+    } catch (err) { toast(errorDe(err), "error"); }
+  });
+}
+
+function modalEditarProducto(p) {
+  abrirModal(
+    "<h3>Editar producto</h3>" +
+    '<form id="form-prod" class="form-modal">' +
+      '<label class="lb">Producto</label><input value="' + esc(p.nombre) + '" readonly>' +
+      '<div class="grid-2-in">' +
+        '<div><label class="lb">Categoría</label><input id="pr-categoria" value="' + esc(p.categoria || "") + '"></div>' +
+        '<div><label class="lb">Precio de venta</label><input id="pr-precio" type="number" value="' + Number(p.precio || 0) + '"></div>' +
+        '<div><label class="lb">Stock mínimo</label><input id="pr-min" type="number" value="' + Number(p.stock_minimo || 0) + '"></div>' +
+        '<div><label class="lb">Estado</label><select id="pr-activo"><option value="true"' + (p.activo ? " selected" : "") + '>Activo</option><option value="false"' + (!p.activo ? " selected" : "") + '>Inactivo</option></select></div>' +
+      "</div>" +
+      '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
+        '<button type="submit" class="btn"><i class="ti ti-device-floppy"></i> Guardar</button></div>' +
+    "</form>"
+  );
+  $("#form-prod").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      var precio = num($("#pr-precio").value);
+      var stockMinimo = numCantidad($("#pr-min"));
+      if (precio < 0 || stockMinimo < 0) throw new Error("El precio y el stock mínimo no pueden ser negativos.");
+      await db(sb.from("productos").update({
+        categoria: $("#pr-categoria").value.trim() || "General",
+        precio: precio,
+        stock_minimo: stockMinimo,
+        activo: $("#pr-activo").value === "true"
+      }).eq("id", p.id));
+      cerrarModal();
+      toast("Producto actualizado");
+      pintarAccesorios();
+    } catch (err) { toast(errorDe(err), "error"); }
+  });
+}
+
+/* ---------------- Ventas ---------------- */
+function htmlVentasAcc(resumen) {
+  var ventas = _accVentas || [];
+  var r = resumen || { ventas: ventas.length, total: 0, ganancia: 0, debe: 0 };
+  return '<div class="kpis">' +
+      kpi("Ventas", r.ventas, "ti-shopping-cart") +
+      kpi("Total", cop(r.total), "ti-receipt") +
+      kpi("Ganancia", cop(r.ganancia), "ti-trending-up", r.ganancia >= 0 ? "verde" : "rojo") +
+      kpi("Por cobrar", cop(r.debe), "ti-cash", r.debe > 0 ? "rojo" : "verde") +
+    "</div>" +
+    '<div class="box">' +
+      '<div class="box-head"><h3><i class="ti ti-shopping-cart"></i> Ventas de accesorios</h3>' +
+        '<button class="btn btn-sm" id="acc-vender"><i class="ti ti-plus"></i> Nueva venta</button></div>' +
+      '<div class="tabla-wrap"><table class="tabla"><thead><tr><th>#</th><th>Fecha</th><th>Cliente</th>' +
+        '<th class="der">Total</th><th class="der">Ganancia</th><th class="der">Abonos</th><th class="der">Debe</th><th>Estado</th><th></th></tr></thead><tbody>' +
+        (ventas.length ? ventas.map(function (v) {
+          return "<tr><td class=\"mono\">" + v.numero + "</td><td>" + fdate(v.fecha) + "</td><td>" + esc(v.cliente_nombre || "—") + "</td>" +
+            '<td class="der mono">' + cop(v.total) + "</td>" +
+            '<td class="der mono ' + (Number(v.ganancia) < 0 ? "rojo" : "verde") + '">' + cop(v.ganancia) + "</td>" +
+            '<td class="der mono">' + cop(v.pagado) + "</td>" +
+            '<td class="der mono ' + (Number(v.saldo) > 0.5 ? "rojo" : "verde") + '">' + cop(v.saldo) + "</td>" +
+            "<td>" + (Number(v.saldo) > 0.5 ? '<span class="tag">Por pagar</span>' : '<span class="tag tag-serv">Pagada</span>') + "</td>" +
+            '<td class="der"><span class="acciones-item">' +
+              '<button class="x" data-ver-acc="' + v.id + '" title="Ver"><i class="ti ti-eye"></i></button>' +
+              '<button class="x" data-editar-venta-acc="' + v.id + '" title="Editar"><i class="ti ti-pencil"></i></button>' +
+              '<button class="x" data-borrar-venta-acc="' + v.id + '" title="Eliminar"><i class="ti ti-trash"></i></button>' +
+            "</span></td></tr>";
+        }).join("") : '<tr><td colspan="9">' + vacio("Sin ventas registradas.", "ti-receipt") + "</td></tr>") +
+      "</tbody></table></div>" +
+      (r.ventas > ventas.length ? '<p class="mini-nota">Mostrando las ' + ventas.length + " ventas más recientes de " + r.ventas + ".</p>" : "") +
+    "</div>" + accDatalist();
+}
+
+function conectarVentasAcc() {
+  $("#acc-vender").addEventListener("click", modalVentaAcc);
+  $$("[data-ver-acc]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var v = (_accVentas || []).find(function (x) { return String(x.id) === String(b.dataset.verAcc); });
+      if (v) modalDetalleVentaAcc(v);
+    });
+  });
+  $$("[data-editar-venta-acc]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var v = (_accVentas || []).find(function (x) { return String(x.id) === String(b.dataset.editarVentaAcc); });
+      if (v) modalEditarVentaAcc(v);
+    });
+  });
+  $$("[data-borrar-venta-acc]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var v = (_accVentas || []).find(function (x) { return String(x.id) === String(b.dataset.borrarVentaAcc); });
+      if (v) eliminarVentaAcc(v);
+    });
+  });
+}
+
+function modalVentaAcc() {
+  var dl = document.getElementById("acc-prod-dl");
+  if (!dl) document.body.insertAdjacentHTML("beforeend", accDatalist());
+  abrirModal(
+    "<h3>Nueva venta de accesorios</h3>" +
+    '<form id="form-venta-acc" class="form-modal">' +
+      '<div class="grid-2-in">' +
+        '<div><label class="lb">Fecha</label><input id="va-fecha" type="date" value="' + hoyInput() + '"></div>' +
+        '<div><label class="lb">Cliente</label><input id="va-cliente" placeholder="Opcional"></div>' +
+      "</div>" +
+      '<div class="box-head" style="margin-top:14px"><h3>Productos</h3><button type="button" class="btn-ghost btn-sm" id="va-add"><i class="ti ti-plus"></i> Agregar</button></div>' +
+      '<div id="va-items"></div>' +
+      '<div class="grid-3-in">' +
+        '<div><label class="lb">Descuento</label><input id="va-desc" type="number" value="0"></div>' +
+        '<div><label class="lb">Envío</label><input id="va-envio" type="number" value="0"></div>' +
+        '<div><label class="lb">Costos (FIFO)</label><input id="va-gastos" type="number" value="0" readonly title="Se calcula automáticamente con los lotes más antiguos"></div>' +
+      "</div>" +
+      '<div class="grid-2-in">' +
+        '<div><label class="lb">Abono inicial</label><input id="va-abono" type="number" value="0"></div>' +
+        '<div><label class="lb">Método</label><select id="va-metodo">' + accMetodos("efectivo") + "</select></div>" +
+      "</div>" +
+      '<div class="res-linea" style="margin-top:12px"><span>Total</span><b id="va-total">$0</b></div>' +
+      '<div class="res-linea mini"><span>Ganancia estimada</span><b id="va-ganancia">$0</b></div>' +
+      '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
+        '<button type="submit" class="btn"><i class="ti ti-check"></i> Registrar venta</button></div>' +
+    "</form>", "ancho"
+  );
+  $("#va-add").addEventListener("click", function () { vaFila(); });
+  $("#va-items").addEventListener("input", vaRecalcular);
+  $("#va-items").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-quitar-va]");
+    if (b) { b.closest(".fila-item").remove(); vaRecalcular(); }
+  });
+  $$("#va-desc, #va-envio, #va-gastos, #va-abono").forEach(function (el) {
+    el.addEventListener("input", vaRecalcular);
+  });
+  vaFila();
+  $("#form-venta-acc").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      var items = $$("#va-items .fila-acc").map(function (f) {
+        var p = accProductoPorNombre($(".va-prod", f).value);
+        return {
+          producto: p,
+          descripcion: $(".va-prod", f).value.trim(),
+          cantidad: numCantidad($(".va-cant", f)) || 1,
+          precio_unitario: num($(".va-precio", f).value)
+        };
+      }).filter(function (i) { return i.descripcion; });
+      if (!items.length) throw new Error("Agrega al menos un producto.");
+      items.forEach(function (i) {
+        if (!i.producto) throw new Error('Producto no encontrado: "' + i.descripcion + '"');
+        if (i.cantidad <= 0) throw new Error("La cantidad debe ser mayor a 0.");
+        if (i.precio_unitario < 0) throw new Error("El precio no puede ser negativo.");
+      });
+      var descuento = num($("#va-desc").value);
+      var envio = num($("#va-envio").value);
+      if (descuento < 0) throw new Error("El descuento no puede ser negativo.");
+      if (envio < 0) throw new Error("El envío no puede ser negativo.");
+      var totalVenta = items.reduce(function (s, i) { return s + i.cantidad * i.precio_unitario; }, 0) - descuento;
+      if (totalVenta < 0) throw new Error("El descuento no puede superar el total de la venta.");
+      var abono = num($("#va-abono").value);
+      if (abono > totalVenta + 0.5) {
+        throw new Error("El abono inicial supera el total de la venta (" + cop(totalVenta) + ").");
+      }
+      var venta = {
+        fecha: $("#va-fecha").value ? $("#va-fecha").value + "T12:00:00" : new Date().toISOString(),
+        cliente_nombre: $("#va-cliente").value.trim(),
+        descuento: descuento,
+        envio: envio,
+        gastos: 0,
+        notas: ""
+      };
+      var pagos = abono > 0 ? [{
+        monto: abono,
+        metodo: $("#va-metodo").value,
+        fecha: venta.fecha,
+        nota: "Abono inicial"
+      }] : [];
+      await db(sb.rpc("vender_accesorios", {
+        p_venta: venta,
+        p_items: items.map(function (i) {
+          return { producto_id: i.producto.id, cantidad: i.cantidad, precio_unitario: i.precio_unitario };
+        }),
+        p_pagos: pagos
+      }));
+      cerrarModal();
+      toast("Venta registrada");
+      pintarAccesorios();
+    } catch (err) { toast(errorDe(err), "error"); }
+  });
+}
+
+function vaFila(producto) {
+  var p = producto || null;
+  var div = document.createElement("div");
+  div.className = "fila-acc";
+  div.innerHTML =
+    '<input class="va-prod" list="acc-prod-dl" placeholder="Producto…" value="' + esc(p ? p.nombre : "") + '">' +
+    '<input class="va-cant" type="number" min="0.5" step="0.5" value="1" title="Cantidad">' +
+    '<input class="va-precio" type="number" inputmode="numeric" value="' + (p ? Number(p.precio || 0) : 0) + '" title="Precio">' +
+    '<span class="it-sub mono">$0</span>' +
+    '<button type="button" class="x" data-quitar-va title="Quitar"><i class="ti ti-x"></i></button>';
+  $("#va-items").appendChild(div);
+  $(".va-prod", div).addEventListener("change", function () {
+    var prod = accProductoPorNombre(this.value);
+    if (prod) $(".va-precio", div).value = Number(prod.precio || 0);
+    vaRecalcular();
+  });
+  vaRecalcular();
+}
+
+let _vaCostoTimer = null;
+
+function vaRecalcular() {
+  if (!$("#va-items")) return;
+  var total = 0;
+  $$("#va-items .fila-acc").forEach(function (f) {
+    var c = numCantidad($(".va-cant", f)) || 1;
+    var p = num($(".va-precio", f).value);
+    total += c * p;
+    $(".it-sub", f).textContent = cop(c * p);
+  });
+  var desc = num($("#va-desc").value);
+  var costo = num($("#va-gastos").value);
+  var envio = num($("#va-envio").value);
+  var gan = total - desc - costo - envio;
+  $("#va-total").textContent = cop(total - desc);
+  $("#va-ganancia").textContent = cop(gan);
+  $("#va-ganancia").className = gan < 0 ? "rojo" : "verde";
+
+  clearTimeout(_vaCostoTimer);
+  _vaCostoTimer = setTimeout(vaCostoFifo, 250);
+}
+
+async function vaCostoFifo() {
+  if (!$("#va-items") || !$("#va-gastos")) return;
+  var total = 0;
+  var filas = $$("#va-items .fila-acc");
+  for (var i = 0; i < filas.length; i++) {
+    var f = filas[i];
+    var prod = accProductoPorNombre($(".va-prod", f).value);
+    var cant = numCantidad($(".va-cant", f)) || 1;
+    if (!prod) continue;
+    try {
+      var costo = await db(sb.rpc("costo_fifo", { p_producto_id: prod.id, p_cantidad: cant }));
+      total += Number(costo || 0);
+    } catch (e) { /* si no hay stock, se muestra el costo disponible */ }
+  }
+  if (!$("#va-gastos")) return;
+  $("#va-gastos").value = Math.round(total);
+
+  var venta = 0;
+  filas.forEach(function (f) {
+    venta += (numCantidad($(".va-cant", f)) || 1) * num($(".va-precio", f).value);
+  });
+  var gan = venta - num($("#va-desc").value) - total - num($("#va-envio").value);
+  $("#va-ganancia").textContent = cop(gan);
+  $("#va-ganancia").className = gan < 0 ? "rojo" : "verde";
+}
+
+async function modalDetalleVentaAcc(v) {
+  try {
+    try {
+      var fresh = await db(sb.from("accesorio_ventas").select("*").eq("id", v.id).single());
+      if (fresh) v = fresh;
+    } catch (e) { /* usar el registro de la lista */ }
+
+    var [items, pagos] = await Promise.all([
+      db(sb.from("accesorio_venta_items").select("*").eq("venta_id", v.id).order("id")),
+      db(sb.from("accesorio_pagos").select("*").eq("venta_id", v.id).order("fecha"))
+    ]);
+    var pagado = pagos.reduce(function (s, p) { return s + Number(p.monto); }, 0);
+    var saldo = Number(v.total) - pagado;
+    abrirModal(
+      "<h3>Venta #" + v.numero + "</h3>" +
+      '<p class="modal-sub">' + fdate(v.fecha) + " · " + esc(v.cliente_nombre || "Cliente ocasional") + "</p>" +
+      '<div class="res-linea grande"><span>Total</span><b>' + cop(v.total) + "</b></div>" +
+      '<div class="res-linea mini"><span>Ganancia</span><b>' + cop(v.ganancia) + "</b></div>" +
+      '<div class="res-linea mini"><span>Abonos</span><b>' + cop(pagado) + "</b></div>" +
+      '<div class="res-linea"><span>Debe</span><b class="' + (saldo > 0.5 ? "rojo" : "verde") + '">' + cop(saldo) + "</b></div>" +
+      '<div class="sep"></div>' +
+      '<div class="tabla-wrap"><table class="tabla"><thead><tr><th>Producto</th><th class="der">Cant.</th><th class="der">Precio</th><th class="der">Costo</th></tr></thead><tbody>' +
+        items.map(function (i) {
+          return "<tr><td>" + esc(i.descripcion) + "</td><td class=\"der mono\">" + i.cantidad + "</td><td class=\"der mono\">" + cop(i.precio_unitario) + "</td><td class=\"der mono\">" + cop(i.costo_total) + "</td></tr>";
+        }).join("") + "</tbody></table></div>" +
+      '<div class="sep"></div>' +
+      '<div class="box-head"><h3>Abonos</h3>' + (saldo > 0.5 ? '<button class="btn-ghost btn-sm" id="acc-abonar"><i class="ti ti-plus"></i> Registrar abono</button>' : "") + "</div>" +
+      (pagos.length ? '<div class="tabla-wrap"><table class="tabla"><thead><tr><th>Fecha</th><th>Método</th><th>Nota</th><th class="der">Monto</th><th></th></tr></thead><tbody>' +
+        pagos.map(function (p) {
+          return "<tr><td>" + fdatetime(p.fecha) + "</td><td>" + badgeMetodo(p.metodo) + "</td><td>" + esc(p.nota || "—") + "</td><td class=\"der mono\">" + cop(p.monto) + "</td>" +
+            '<td class="der"><button class="x" data-borrar-pago-acc="' + p.id + '"><i class="ti ti-trash"></i></button></td></tr>';
+        }).join("") + "</tbody></table></div>" : '<p class="mini-vacio">Sin abonos.</p>') +
+      '<div class="modal-acciones">' +
+        '<button type="button" class="btn-ghost" id="acc-editar-venta"><i class="ti ti-edit"></i> Editar</button>' +
+        '<button type="button" class="btn-ghost" id="acc-borrar-venta"><i class="ti ti-trash"></i> Eliminar</button>' +
+        '<button type="button" class="btn-ghost" data-cerrar>Cerrar</button></div>',
+      "ancho"
+    );
+    var btn = $("#acc-abonar");
+    if (btn) btn.addEventListener("click", function () { modalAbonoAcc(v, saldo); });
+    var btnEdV = $("#acc-editar-venta");
+    if (btnEdV) btnEdV.addEventListener("click", function () { modalEditarVentaAcc(v); });
+    var btnDelV = $("#acc-borrar-venta");
+    if (btnDelV) btnDelV.addEventListener("click", function () { eliminarVentaAcc(v); });
+    $$("[data-borrar-pago-acc]").forEach(function (b) {
+      b.addEventListener("click", async function () {
+        if (!confirm("¿Eliminar este abono?")) return;
+        try {
+          await db(sb.from("accesorio_pagos").delete().eq("id", b.dataset.borrarPagoAcc));
+          toast("Abono eliminado");
+          pintarAccesorios();
+          cerrarModal();
+        } catch (e) { toast(errorDe(e), "error"); }
+      });
+    });
+  } catch (e) { toast(errorDe(e), "error"); }
+}
+
+function modalEditarVentaAcc(v) {
+  abrirModal(
+    "<h3>Editar venta #" + v.numero + "</h3>" +
+    '<form id="form-edit-venta-acc" class="form-modal">' +
+      '<div class="grid-2-in">' +
+        '<div><label class="lb">Fecha</label><input id="eva-fecha" type="date" value="' + inputDate(v.fecha) + '"></div>' +
+        '<div><label class="lb">Cliente</label><input id="eva-cliente" value="' + esc(v.cliente_nombre || "") + '"></div>' +
+        '<div><label class="lb">Descuento</label><input id="eva-desc" type="number" value="' + Number(v.descuento || 0) + '"></div>' +
+        '<div><label class="lb">Envío</label><input id="eva-envio" type="number" value="' + Number(v.envio || 0) + '"></div>' +
+        '<div><label class="lb">Otros gastos</label><input id="eva-gastos" type="number" value="' + Number(v.gastos || 0) + '"></div>' +
+      "</div>" +
+      '<label class="lb">Notas</label><input id="eva-notas" value="' + esc(v.notas || "") + '">' +
+      '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
+        '<button type="submit" class="btn"><i class="ti ti-device-floppy"></i> Guardar</button></div>' +
+    "</form>"
+  );
+  $("#form-edit-venta-acc").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      var descuento = num($("#eva-desc").value);
+      var envio = num($("#eva-envio").value);
+      var gastos = num($("#eva-gastos").value);
+      if (descuento < 0 || envio < 0 || gastos < 0) {
+        throw new Error("El descuento, el envío y los gastos no pueden ser negativos.");
+      }
+      var totalItems = Number(v.total) + Number(v.descuento || 0);
+      if (totalItems - descuento + 0.5 < Number(v.pagado || 0)) {
+        throw new Error("El descuento deja la venta por debajo de lo ya abonado.");
+      }
+      await db(sb.from("accesorio_ventas").update({
+        fecha: $("#eva-fecha").value ? $("#eva-fecha").value + "T12:00:00" : v.fecha,
+        cliente_nombre: $("#eva-cliente").value.trim() || null,
+        descuento: descuento,
+        envio: envio,
+        gastos: gastos,
+        notas: $("#eva-notas").value.trim() || null
+      }).eq("id", v.id));
+      toast("Venta actualizada");
+      await pintarAccesorios();
+      modalDetalleVentaAcc(v);
+    } catch (err) { toast(errorDe(err), "error"); }
+  });
+}
+
+async function eliminarVentaAcc(v) {
+  if (!confirm("¿Eliminar definitivamente la venta #" + v.numero + "?")) return;
+  if (!confirm("Se devolverá al stock lo que consumió. Esta acción no se puede deshacer. ¿Continuar?")) return;
+  try {
+    await db(sb.rpc("eliminar_venta_accesorio", { p_venta_id: v.id }));
+    toast("Venta eliminada y stock restaurado");
+    cerrarModal();
+    pintarAccesorios();
+  } catch (err) { toast(errorDe(err), "error"); }
+}
+
+function modalAbonoAcc(v, saldo) {
+  abrirModal(
+    "<h3>Registrar abono</h3>" +
+    '<form id="form-abono-acc" class="form-modal">' +
+      '<div class="grid-2-in">' +
+        '<div><label class="lb">Fecha</label><input id="aa-fecha" type="date" value="' + hoyInput() + '" required></div>' +
+        '<div><label class="lb">Monto</label><input id="aa-monto" type="number" value="' + (saldo || "") + '" required></div>' +
+        '<div><label class="lb">Método</label><select id="aa-metodo">' + accMetodos("efectivo") + "</select></div>" +
+        '<div><label class="lb">Nota</label><input id="aa-nota" placeholder="Opcional"></div>' +
+      "</div>" +
+      '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
+        '<button type="submit" class="btn"><i class="ti ti-check"></i> Registrar</button></div>' +
+    "</form>"
+  );
+  $("#form-abono-acc").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      var monto = num($("#aa-monto").value);
+      if (monto <= 0) throw new Error("Escribe un monto mayor a 0.");
+      if (monto > Number(saldo || 0) + 0.5) {
+        throw new Error("El abono supera el saldo pendiente (" + cop(saldo) + ").");
+      }
+      var sesion = await sesionActual();
+      await db(sb.from("accesorio_pagos").insert({
+        venta_id: v.id,
+        fecha: fechaPago($("#aa-fecha").value),
+        monto: monto,
+        metodo: $("#aa-metodo").value,
+        nota: $("#aa-nota").value.trim() || null,
+        usuario: sesion ? sesion.user.id : null
+      }));
+      cerrarModal();
+      toast("Abono registrado");
+      pintarAccesorios();
+    } catch (err) { toast(errorDe(err), "error"); }
+  });
+}
+
+/* ---------------- Garantías ---------------- */
+function htmlGarantiasAcc() {
+  var gs = _accGarantias || [];
+  var prod = {};
+  (_accStock || []).forEach(function (p) { prod[p.id] = p.nombre; });
+  return '<div class="box">' +
+      '<div class="box-head"><h3><i class="ti ti-shield-check"></i> Garantías</h3>' +
+        '<button class="btn btn-sm" id="acc-garantia"><i class="ti ti-plus"></i> Registrar garantía</button></div>' +
+      '<div class="tabla-wrap"><table class="tabla"><thead><tr><th>Fecha</th><th>Producto</th><th class="der">Cant.</th>' +
+        '<th>Origen</th><th>Reemplazo</th><th class="der">Costo</th><th>Estado</th><th></th></tr></thead><tbody>' +
+        (gs.length ? gs.map(function (g) {
+          return "<tr><td>" + fdate(g.fecha) + "</td><td>" + esc(prod[g.producto_id] || "—") + "</td>" +
+            '<td class="der mono">' + g.cantidad + "</td><td>" + (g.origen === "tienda" ? "Tienda" : "Post-venta") + "</td>" +
+            "<td>" + esc(prod[g.producto_reemplazo_id] || "—") + "</td>" +
+            '<td class="der mono">' + cop(Number(g.costo_defectuoso) + Number(g.costo_reemplazo)) + "</td>" +
+            "<td>" + esc(g.estado) + "</td>" +
+            '<td class="der"><button class="x" data-borrar-garantia="' + g.id + '" title="Eliminar"><i class="ti ti-trash"></i></button></td></tr>';
+        }).join("") : '<tr><td colspan="8">' + vacio("Sin garantías registradas.", "ti-shield-check") + "</td></tr>") +
+      "</tbody></table></div>" +
+      (gs.length >= 300 ? '<p class="mini-nota">Mostrando las 300 garantías más recientes.</p>' : "") +
+    "</div>" + accDatalist();
+}
+
+function conectarGarantiasAcc() {
+  $("#acc-garantia").addEventListener("click", modalGarantiaAcc);
+  $$("[data-borrar-garantia]").forEach(function (b) {
+    b.addEventListener("click", async function () {
+      if (!confirm("¿Eliminar esta garantía? No se restaura automáticamente el stock; si fue un error, ajusta el inventario.")) return;
+      try {
+        await db(sb.from("accesorio_garantias").delete().eq("id", b.dataset.borrarGarantia));
+        toast("Garantía eliminada");
+        pintarAccesorios();
+      } catch (err) { toast(errorDe(err), "error"); }
+    });
+  });
+}
+
+function modalGarantiaAcc() {
+  var dl = document.getElementById("acc-prod-dl");
+  if (!dl) document.body.insertAdjacentHTML("beforeend", accDatalist());
+  abrirModal(
+    "<h3>Registrar garantía</h3>" +
+    '<form id="form-garantia" class="form-modal">' +
+      '<div class="grid-2-in">' +
+        '<div><label class="lb">Producto defectuoso</label><input id="ga-prod" list="acc-prod-dl" placeholder="Buscar producto…"></div>' +
+        '<div><label class="lb">Cantidad</label><input id="ga-cant" type="number" value="1" required></div>' +
+        '<div><label class="lb">Origen</label><select id="ga-origen"><option value="post_venta">Falla post-venta</option><option value="tienda">Defectuoso en tienda</option></select></div>' +
+        '<div><label class="lb">Venta # (opcional)</label><input id="ga-venta" type="number" placeholder="Opcional"></div>' +
+        '<div><label class="lb">Producto de reemplazo</label><input id="ga-rep" list="acc-prod-dl" placeholder="Opcional"></div>' +
+        '<div><label class="lb">Cantidad reemplazo</label><input id="ga-cant-rep" type="number" value="0"></div>' +
+      "</div>" +
+      '<label class="lb">Motivo</label><input id="ga-motivo" placeholder="Falla, defecto de fábrica…">' +
+      '<label class="lb">Notas</label><input id="ga-notas" placeholder="Opcional">' +
+      '<div class="modal-acciones"><button type="button" class="btn-ghost" data-cerrar>Cancelar</button>' +
+        '<button type="submit" class="btn"><i class="ti ti-check"></i> Registrar</button></div>' +
+    "</form>"
+  );
+  $("#form-garantia").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    try {
+      var p = accProductoPorNombre($("#ga-prod").value);
+      if (!p) throw new Error("Selecciona el producto defectuoso del listado.");
+      var rep = accProductoPorNombre($("#ga-rep").value);
+      var cantGarantia = numCantidad($("#ga-cant"));
+      var cantReemplazo = numCantidad($("#ga-cant-rep"));
+      if (cantGarantia <= 0) throw new Error("La cantidad debe ser mayor a 0.");
+      if (cantReemplazo < 0) throw new Error("La cantidad de reemplazo no puede ser negativa.");
+      var ventaNumero = $("#ga-venta").value ? Number($("#ga-venta").value) : null;
+      var ventaId = null;
+      if (ventaNumero) {
+        var ventaRows = await db(sb.from("accesorio_ventas").select("id").eq("numero", ventaNumero).limit(1));
+        if (!ventaRows.length) throw new Error("No existe la venta #" + ventaNumero + ".");
+        ventaId = ventaRows[0].id;
+      }
+      await db(sb.rpc("registrar_garantia_accesorio", {
+        p: {
+          producto_id: p.id,
+          cantidad: cantGarantia,
+          origen: $("#ga-origen").value,
+          venta_id: ventaId,
+          motivo: $("#ga-motivo").value.trim(),
+          producto_reemplazo_id: rep ? rep.id : null,
+          cantidad_reemplazo: cantReemplazo,
+          notas: $("#ga-notas").value.trim()
+        }
+      }));
+      cerrarModal();
+      toast("Garantía registrada");
+      pintarAccesorios();
+    } catch (err) { toast(errorDe(err), "error"); }
+  });
+}
